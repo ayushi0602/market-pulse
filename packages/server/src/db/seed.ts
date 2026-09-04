@@ -43,8 +43,33 @@ migrate(db);
 
 const store = createEventStore(db, uuidEventIds, systemClock);
 const snapshots = createSnapshotStore(db, systemClock);
-const watchlist = createWatchlistStore(db, systemClock);
+/**
+ * Watchlist order is `added_at`, and all three would otherwise be added within
+ * the same millisecond -- falling back to alphabetical and burying RELIANCE,
+ * which is the instrument the whole demo turns on. A clock that advances one
+ * millisecond per call keeps the seeded order the order they are listed in.
+ */
+let addedAt = Date.now();
+const orderedClock = { now: () => (addedAt += 1) };
+const watchlist = createWatchlistStore(db, orderedClock);
 const demo = userId('demo');
+
+/**
+ * Refuse to seed a database that already has history.
+ *
+ * The event log is append-only, so a second run cannot replace the first -- it
+ * appends a duplicate story, and the demo then reports six meaningful changes
+ * instead of two. There is no "re-seed" that preserves the point, which is why
+ * this exits rather than trying to be clever. `npm run db:reset` starts over
+ * from an empty file.
+ */
+if (store.head() > 0) {
+  console.error(`Refusing to seed: ${config.databaseUrl} already holds ${store.head()} event(s).`);
+  console.error('History is append-only, so seeding again would duplicate the story.');
+  console.error('Run `npm run db:reset` to start from an empty database.');
+  db.close();
+  process.exit(1);
+}
 
 let written = 0;
 for (const ticks of streams) {

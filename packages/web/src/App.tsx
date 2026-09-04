@@ -104,7 +104,7 @@ export function App() {
       {tab === 'watchlist' && (
         <>
           <h1>My watchlist</h1>
-          <Watchlist userId={user} />
+          <Watchlist userId={user} onViewChanges={() => setTab('attention')} />
         </>
       )}
 

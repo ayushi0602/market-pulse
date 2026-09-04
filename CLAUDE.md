@@ -237,24 +237,23 @@ proxied so there is no CORS to maintain.
 | 4 | Attention feed API + "Since you last checked" | ✅ done |
 | 5 | Watchlist + instrument snapshots | ✅ done |
 | 6 | Replay / demo mode | ✅ done |
-| 7 | **Demo polish and reviewer journey** | ⏳ next |
+| 7 | Demo polish and reviewer journey | ✅ done |
 
-### Next phase scope
+### The project is feature-complete
 
-**Stop adding features.** Every part of the original brief is now answered:
-create and manage a watchlist, see the latest market information, return later
-and find out what changed. The remaining risk is presentation, not correctness.
+Every part of the brief is answered: create and manage a watchlist, see the
+latest market information, return later and find out what changed.
 
-What is left:
+**Do not add features.** Live ingestion, multiple watchlists, auth,
+notifications, WebSockets and portfolio holdings are each defensible and none
+makes the submission better than a clear demo of what already works. Each also
+adds a new way for the demo to fail.
 
-- A reviewer journey that lands the argument in under a minute: watchlist →
-  attention → comparison → replay.
-- README that opens with the problem and the thesis, not the folder structure.
-- Anything that makes the four-concept architecture legible at a glance.
+If more work is wanted, it belongs in one of these:
 
-Explicitly not: live ingestion, multiple watchlists, auth, notifications,
-portfolio holdings, WebSockets. Each is defensible and none of them makes the
-submission better than a clear demo of what already works.
+- Visual refinement of the three screens.
+- Tightening the walkthrough in the README.
+- Fixing anything a real reviewer trips over.
 
 ---
 
@@ -262,6 +261,28 @@ submission better than a clear demo of what already works.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 7: finalization, no new features
+
+Presentation and reliability only.
+
+- **Fixed a real demo bug.** `npm run db:seed` was not idempotent: a second run
+  appended a duplicate story, so a reviewer who ran it twice would see six
+  meaningful changes instead of two. Seeding now refuses when history exists and
+  explains why; `npm run db:reset` deletes the file and rebuilds. There is no
+  "clear events" command, because offering one would contradict I2.
+- **Fixed seeded watchlist order.** All three instruments were added within the
+  same millisecond, so ordering fell back to alphabetical and buried RELIANCE —
+  the instrument the demo turns on. The seed now advances its own clock.
+- **Added** a "View what happened →" control on changed rows, so the argument is
+  one click from the entry point.
+- **Rewrote README** to lead with the problem and the thesis rather than the
+  stack, with a 60-second walkthrough and an explicit trade-offs section.
+
+Gate: `npm run verify` green — 180 tests, 19 files, stable across repeated runs.
+
+**A note for whoever picks this up:** the remaining risk is presentation, not
+correctness. Resist adding features.
 
 ### 2026-09-04 — Phase 6: watchlist and instrument snapshots
 

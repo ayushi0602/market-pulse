@@ -12,9 +12,11 @@ import { formatPercent, formatPrice, formatTime, pluralise } from './format.js';
 function Row({
   row,
   onRemove,
+  onViewChanges,
 }: {
   row: WatchlistRowView;
   onRemove: (instrumentId: string) => void;
+  onViewChanges: () => void;
 }) {
   const changed = row.attention === 'changed';
 
@@ -23,12 +25,17 @@ function Row({
       <div>
         <div className="symbol">{row.instrumentId}</div>
         {changed ? (
-          <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.875rem' }}>
-            ● {pluralise(row.meaningfulChanges, 'meaningful change')}
-            {row.netChangeBps === 0
-              ? ' — but the price came back'
-              : row.netChangeBps !== undefined && ` — net ${formatPercent(row.netChangeBps)}`}
-          </div>
+          <>
+            <div style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.875rem' }}>
+              ● {pluralise(row.meaningfulChanges, 'meaningful change')}
+              {row.netChangeBps === 0
+                ? ' — but the price came back'
+                : row.netChangeBps !== undefined && ` — net ${formatPercent(row.netChangeBps)}`}
+            </div>
+            <button type="button" className="link" onClick={onViewChanges}>
+              View what happened →
+            </button>
+          </>
         ) : (
           <div className="muted" style={{ fontSize: '0.875rem' }}>
             ✓ No meaningful changes
@@ -60,7 +67,14 @@ function Row({
   );
 }
 
-export function Watchlist({ userId }: { userId: string }) {
+export function Watchlist({
+  userId,
+  onViewChanges,
+}: {
+  userId: string;
+  /** Takes the reviewer straight to the argument, one click from the entry point. */
+  onViewChanges: () => void;
+}) {
   const [data, setData] = useState<WatchlistResponse | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [draft, setDraft] = useState('');
@@ -115,6 +129,7 @@ export function Watchlist({ userId }: { userId: string }) {
               key={row.instrumentId}
               row={row}
               onRemove={(instrumentId) => apply(removeFromWatchlist(userId, instrumentId))}
+              onViewChanges={onViewChanges}
             />
           ))}
         </div>

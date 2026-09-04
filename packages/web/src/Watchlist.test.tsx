@@ -55,7 +55,7 @@ function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
 describe('W1: the watchlist shows everything followed', () => {
   it('lists the quiet instrument alongside the changed ones', async () => {
     stubFetch(() => watchlist);
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
     expect(await screen.findByTestId('watchlist-TCS')).toBeDefined();
     expect(screen.getByTestId('watchlist-RELIANCE')).toBeDefined();
@@ -64,7 +64,7 @@ describe('W1: the watchlist shows everything followed', () => {
 
   it('says plainly that the quiet one has no meaningful changes', async () => {
     stubFetch(() => watchlist);
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
     const tcs = await screen.findByTestId('watchlist-TCS');
     expect(tcs.textContent).toContain('No meaningful changes');
@@ -75,7 +75,7 @@ describe('W1: the watchlist shows everything followed', () => {
 describe('the price is labelled as recorded, never live', () => {
   it('says "As recorded" with the observation time', async () => {
     stubFetch(() => watchlist);
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
     const row = await screen.findByTestId('watchlist-RELIANCE');
     expect(row.textContent).toMatch(/As recorded/);
@@ -97,7 +97,7 @@ describe('the price is labelled as recorded, never live', () => {
         },
       ],
     }));
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
     const row = await screen.findByTestId('watchlist-WIPRO');
     expect(row.textContent).toContain('Never observed');
@@ -108,7 +108,7 @@ describe('the price is labelled as recorded, never live', () => {
 describe('the round trip is distinguished from nothing happening', () => {
   it('says the price came back rather than reporting a flat 0%', async () => {
     stubFetch(() => watchlist);
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
     const reliance = await screen.findByTestId('watchlist-RELIANCE');
     expect(reliance.textContent).toContain('2 meaningful changes');
@@ -129,7 +129,7 @@ describe('managing the list', () => {
           }
         : watchlist,
     );
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
     await screen.findByTestId('watchlist-TCS');
 
     fireEvent.change(screen.getByLabelText('Instrument symbol'), { target: { value: 'wipro' } });
@@ -153,7 +153,7 @@ describe('managing the list', () => {
         ? { userId: 'demo', rows: watchlist.rows.filter((r) => r.instrumentId !== 'TCS') }
         : watchlist,
     );
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
     await screen.findByTestId('watchlist-TCS');
 
     fireEvent.click(screen.getByRole('button', { name: 'Remove TCS' }));
@@ -166,8 +166,31 @@ describe('managing the list', () => {
 
   it('will not submit an empty symbol', async () => {
     stubFetch(() => watchlist);
-    render(<Watchlist userId="demo" />);
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
     await screen.findByTestId('watchlist-TCS');
     expect(screen.getByRole('button', { name: 'Add' })).toHaveProperty('disabled', true);
+  });
+});
+
+describe('the reviewer journey', () => {
+  it('offers a one-click jump from a changed instrument to what happened', async () => {
+    const onViewChanges = vi.fn();
+    stubFetch(() => watchlist);
+    render(<Watchlist userId="demo" onViewChanges={onViewChanges} />);
+
+    await screen.findByTestId('watchlist-RELIANCE');
+    const links = screen.getAllByRole('button', { name: /View what happened/ });
+    // Offered on the instruments that changed, and not on the quiet one.
+    expect(links).toHaveLength(2);
+    expect(screen.getByTestId('watchlist-TCS').textContent).not.toContain('View what happened');
+
+    // Narrowed rather than cast or asserted: the lint rule prefers `!` to a
+    // cast, and the project prefers neither.
+    const [first] = links;
+    if (first === undefined) {
+      throw new Error('Expected a "View what happened" control');
+    }
+    fireEvent.click(first);
+    expect(onViewChanges).toHaveBeenCalledTimes(1);
   });
 });

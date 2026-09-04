@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 6 — watchlist |
+| **Iteration** | 7 — finalization |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 179 passing, 22 files |
+| **Tests** | 180 passing, 19 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
 | **Market features** | End to end: engine → log → watermark → API → screen. |
 
-**Next up:** demo polish and the reviewer journey. Every part of the original
-brief is now answered; the remaining risk is presentation, not correctness.
+**Next up:** nothing. The project is feature-complete against the brief. Any
+further work is visual refinement or fixing what a real reviewer trips over.
 
 ---
 
@@ -586,3 +586,82 @@ distinct from *what changed enough to deserve attention*.
 - Quiet instruments show a price and an observation time but no percentage,
   because there is no baseline to compute one from.
 - Still no CI, no auth. `userId` remains a query parameter and a text box.
+
+---
+
+## Iteration 7 — Finalization
+
+**Date:** 2026-09-04
+**Goal:** Presentation, reliability and a reviewer journey. **No new features.**
+
+### Fixed: the seed was not idempotent
+
+The most valuable finding of this iteration, and it was a genuine demo bug
+rather than a test failure. Running `npm run db:seed` twice appended a second
+copy of the story:
+
+```
+Log head is now 3     # first run
+Log head is now 6     # second run
+Log head is now 9     # third run
+```
+
+A reviewer who ran it twice would have seen RELIANCE reporting six meaningful
+changes, and the golden scenario would have looked like noise.
+
+There is no correct "re-seed": history is append-only by design, so a second run
+cannot replace the first. Seeding now refuses when events already exist and says
+why, and `npm run db:reset` deletes the database file and rebuilds. Deliberately
+**not** implemented: a "clear events" command, which would contradict the
+product's central guarantee to make a script more convenient.
+
+### Fixed: seeded watchlist order buried the demo
+
+All three instruments were added within the same millisecond, so `ORDER BY
+added_at, instrument_id` fell back to alphabetical — putting INFY first and
+RELIANCE, the instrument the entire demo turns on, second. The seed now advances
+its own clock by a millisecond per entry so the seeded order is the listed order.
+
+### Built
+
+- **"View what happened →"** on rows with unread changes, jumping straight to
+  the attention feed. Absent on quiet rows, which is asserted.
+- **README rewritten** to the structure a reviewer actually needs: the problem
+  first (with the ₹2,900 → ₹2,639 → ₹2,900 diagram), then the idea, then the
+  product model, then a 60-second walkthrough, then the engineering decisions
+  that shaped the design, then trade-offs, then how to run it. The technology
+  list is gone; it was never the interesting part.
+- **Trade-offs section**, stated plainly: staged moves reported in pieces, no
+  live data, no percentage for quiet instruments, one uncalibrated threshold, no
+  auth, no ingestion pipeline.
+
+### Verified
+
+- `npm run verify` → green: **180 tests in 19 files**.
+- **Cold-clone audit.** Cloned the repository to a temporary directory under a
+  different path, ran `npm install`, `npm run db:seed` and `npm test`: 179 passed
+  (the clone predated this iteration's commits). This is the check the Phase 1.5
+  config fix existed to make possible — nothing depends on the checkout being
+  named `market-pulse` or living at a particular path.
+- **Flake check.** One test failed once, immediately after an edit, and was not
+  reproducible: 14 subsequent full-suite runs and 3 full `verify` runs were all
+  green. Most likely a stale transform cache picking up a mid-write file rather
+  than a product flake. Recorded rather than dismissed, because a demo that
+  fails once in twenty is a demo that fails.
+
+### Course correction
+
+ESLint's `non-nullable-type-assertion-style` wanted a `!` assertion where a cast
+had been used — directly against the project's own convention of avoiding both.
+Resolved by narrowing explicitly instead, which satisfies the rule and the
+convention. Neither was bent to accommodate the other.
+
+### Final state
+
+Feature-complete against the brief. The open items below are deliberate and
+documented in the README, not oversights:
+
+- No live market ingestion; every price is labelled "as recorded".
+- Staged moves are reported in pieces (the re-anchoring trade-off).
+- One user, one watchlist, no auth.
+- No CI, because there is no remote to run it on.
