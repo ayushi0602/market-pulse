@@ -126,7 +126,7 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
                   : `Step ${cursor} of ${timeline.length}`}
             </div>
           </div>
-          <div style={{ textAlign: 'right' }}>
+          <div className="row-end">
             <div className="big-number">{current === undefined ? '—' : formatPrice(current)}</div>
             <div
               className="muted"

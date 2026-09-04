@@ -79,7 +79,7 @@ export function TraditionalWatchlist({ feed }: { feed: AttentionFeedResponse }) 
                   {isFlat ? 'No change since your last check' : 'Since your last check'}
                 </div>
               </div>
-              <div style={{ textAlign: 'right' }}>
+              <div className="row-end">
                 <div className="big-number">{formatPrice(instrument.latestPrice)}</div>
                 <div
                   className={

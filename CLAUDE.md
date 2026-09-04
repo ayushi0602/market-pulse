@@ -136,6 +136,21 @@ The four the system exists to guarantee:
 | **I3** | The significance engine is deterministic and pure. Same ticks in, same events out, always. |
 | **I4** | Each user consumes events independently. One user reading changes nothing for another. |
 
+Four more sets were added as the product grew. Each has a named test block, and
+ARCHITECTURE.md records how each one holds:
+
+| Set | Covers |
+| --- | --- |
+| **F1–F5** | The feed: reading never acknowledges, acknowledging is monotonic, the feed is scoped to the watermark, ranking is deterministic |
+| **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
+| **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
+
+**Several are structural rather than behavioural** — the replay route holds no
+`WatermarkStore` and the watchlist store cannot reach `market_events`, so those
+invariants cannot be violated without changing application wiring. Preserve that
+shape: passing a store into a module "for convenience" can silently downgrade a
+structural guarantee into one that merely happens to hold.
+
 ---
 
 ## 3. How the code is organised
@@ -192,6 +207,21 @@ Prefer a real in-process dependency over a mock.
 **Errors.** Fail loudly at startup on bad configuration. Never swallow an error
 to keep a request alive.
 
+**React state.** Before adding state, ask whether it can be *derived* from what
+you already have. Never call `setState` inside an effect to correct other state
+— that is what causes cascading renders, and the lint rule that catches it has
+now fired twice in this repo. "Playing but finished" was not a state the replay
+component could be in; it is computed. Both failures were this one mistake.
+
+**Parsing in tests.** A `RequestInit` body is `BodyInit | null`, so
+`String(body)` risks `[object Object]`. Assert `typeof body === 'string'` first,
+then parse. This has been rediscovered twice; do not rediscover it a third time.
+
+**Narrowing.** The project avoids both `!` and `as T` for removing `undefined`.
+Use a `required(value, what)` helper or an explicit `if (x === undefined) throw`.
+ESLint's `non-nullable-type-assertion-style` will suggest `!` over a cast — the
+answer to that conflict is to need neither.
+
 ---
 
 ## 5. Commands
@@ -237,12 +267,13 @@ proxied so there is no CORS to maintain.
 | 4 | Attention feed API + "Since you last checked" | ✅ done |
 | 5 | Watchlist + instrument snapshots | ✅ done |
 | 6 | Replay / demo mode | ✅ done |
-| 7 | Demo polish and reviewer journey | ✅ done |
+| 7 | Demo polish, reviewer journey, responsive pass | ✅ done |
 
 ### The project is feature-complete
 
 Every part of the brief is answered: create and manage a watchlist, see the
-latest market information, return later and find out what changed.
+latest market information, return later and find out what changed. All seven
+phases are done, including the responsive pass.
 
 **Do not add features.** Live ingestion, multiple watchlists, auth,
 notifications, WebSockets and portfolio holdings are each defensible and none
@@ -251,9 +282,41 @@ adds a new way for the demo to fail.
 
 If more work is wanted, it belongs in one of these:
 
-- Visual refinement of the three screens.
+- Visual refinement of the existing screens.
 - Tightening the walkthrough in the README.
 - Fixing anything a real reviewer trips over.
+
+### How to inspect the UI without adding a dependency
+
+Playwright and Puppeteer are **not** dependencies and should not become ones.
+Chrome can be driven directly over CDP using Node's built-in `WebSocket` client:
+
+```bash
+npm run db:reset && npm run dev            # app on :5173, API on :4000
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless=new --disable-gpu --remote-debugging-port=9222 \
+  --user-data-dir=/tmp/mp-chrome about:blank &
+```
+
+Then connect to the target from `http://localhost:9222/json`, and use
+`Emulation.setDeviceMetricsOverride` to set a width, `Runtime.evaluate` to click
+by button text, and `Page.captureScreenshot` to capture. Roughly 60 lines. This
+found two hierarchy problems and three responsive problems that the 27 web tests
+could not — **look at the screens after changing them.**
+
+A useful check to run alongside the screenshots, since a screenshot will not tell
+you about horizontal overflow:
+
+```js
+document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+```
+
+### Verified widths
+
+390px (phone), 768px (tablet) and 900px (desktop), across all four screens: no
+horizontal overflow at any of them. Below 480px the row layout stacks and the
+tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
+`.row-end`, re-check those widths.
 
 ---
 
@@ -285,6 +348,22 @@ presentation fixes followed: the ranking explanation now precedes the event list
 (significance ranking can put a recovery above the decline that caused it, which
 needs framing *before* the reader meets it), and "Remove" no longer competes
 with the primary action.
+
+**Responsive pass at 390 / 768 / 900px.** No horizontal overflow at any width,
+measured rather than assumed. Three problems found and fixed at phone width:
+
+1. The tab strip wrapped, turning "My watchlist" into two lines and the nav into
+   a broken-looking block. Tabs now `nowrap` and the strip scrolls.
+2. "As recorded 1:00 pm" broke after "1:00", reading as two unrelated fragments.
+   The timestamp is now one unbreakable phrase.
+3. The first fix attempt used `flex-wrap` on `.row`, which made the layout depend
+   on how long each instrument's status text happened to be — some rows in two
+   columns, others broken onto a second line with the price floating. Replaced
+   with a consistent stack below 480px.
+
+The comparison screen — the most important one — held up unchanged at every
+width: `₹2,900.00 / 0.00% / No change since your last check` still reads as one
+argument next to "3 meaningful transitions happened while you were away".
 
 Gate: `npm run verify` green — 180 tests, 19 files, stable across repeated runs.
 

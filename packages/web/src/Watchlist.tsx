@@ -43,11 +43,11 @@ function Row({
         )}
       </div>
 
-      <div style={{ textAlign: 'right' }}>
+      <div className="row-end">
         <div className="big-number">
           {row.latestPrice === undefined ? '—' : formatPrice(row.latestPrice)}
         </div>
-        <div className="muted" style={{ fontSize: '0.8125rem' }}>
+        <div className="muted observed" style={{ fontSize: '0.8125rem' }}>
           {/* Never "live": this is the last observation we recorded, and the
               label must not claim more than the data model knows. */}
           {row.observedAt === undefined

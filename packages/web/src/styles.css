@@ -291,6 +291,13 @@ input[type='text'] {
   gap: 1.5rem;
   border-bottom: 1px solid var(--border);
   margin-bottom: 1.75rem;
+  /* Scroll rather than wrap: a wrapped tab label reads as a broken heading. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tabs button {
@@ -304,6 +311,7 @@ input[type='text'] {
   padding: 0 0 0.75rem;
   margin-bottom: -1px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .tabs button[aria-selected='true'] {
@@ -342,4 +350,54 @@ button.link.quiet {
 button.link.quiet:hover {
   opacity: 1;
   color: var(--text);
+}
+
+/*
+ * A recorded time is one phrase. Wrapping "As recorded 1:00" / "pm" makes the
+ * timestamp look like two unrelated fragments.
+ */
+.observed {
+  white-space: nowrap;
+}
+
+.row-end {
+  text-align: right;
+}
+
+@media (max-width: 480px) {
+  .shell {
+    padding: 2rem 1rem 4rem;
+  }
+
+  .tabs {
+    gap: 1.125rem;
+  }
+
+  .tabs button {
+    font-size: 0.9375rem;
+  }
+
+  h1 {
+    font-size: 1.625rem;
+  }
+
+  /*
+   * Stack, rather than wrap. Wrapping left some rows in two columns and others
+   * broken onto a second line with the price floating oddly -- the layout
+   * changed depending on how long the instrument's status text happened to be.
+   * Stacking every row is predictable at this width.
+   */
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.375rem;
+  }
+
+  .row-end {
+    text-align: left;
+  }
+
+  .big-number {
+    font-size: 1.25rem;
+  }
 }

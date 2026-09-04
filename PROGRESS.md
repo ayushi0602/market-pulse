@@ -691,3 +691,40 @@ Two presentation problems were found and fixed:
 
 Both are presentation-only. No behaviour changed, and the 27 web tests were
 green before and after.
+
+### Responsive pass (390 / 768 / 900px)
+
+The last open item from the review, now closed. Measured rather than assumed:
+horizontal overflow was checked programmatically at each width
+(`scrollWidth > clientWidth`) alongside the screenshots, because a screenshot
+will not tell you an element sits past the viewport.
+
+**Result: no horizontal overflow at any width, on any of the four screens.**
+
+Three problems were found at 390px and fixed:
+
+| Problem | Fix |
+| --- | --- |
+| The tab strip wrapped — "My watchlist" broke onto two lines and the nav read as a broken heading | Labels `nowrap`; the strip scrolls instead |
+| "As recorded 1:00 pm" broke after "1:00", reading as two unrelated fragments | The timestamp is one unbreakable phrase |
+| The first fix used `flex-wrap` on `.row`, so layout depended on how long each instrument's status text was — some rows two-column, others broken with the price floating oddly | Replaced with a consistent stack below 480px, and inline `textAlign: 'right'` replaced by a `.row-end` class so the media query can override it without `!important` |
+
+The third is worth noting: the first attempt *looked* like a fix in isolation
+and only revealed itself as wrong when the three rows were compared against each
+other. TCS (short status text) stayed two-column while RELIANCE and INFY broke.
+Checking one row would have missed it.
+
+What held up unchanged at every width:
+
+- The comparison screen. `₹2,900.00 / 0.00% / No change since your last check`
+  still reads as one argument beside "3 meaningful transitions happened while
+  you were away".
+- Replay controls — Play, Next and Restart fit one line at 390px and stay
+  tappable.
+- The ranking explanation stays above the event list.
+- "View what happened →" stays primary; "Remove" stays secondary.
+
+### Final state
+
+Feature-complete, audited, and submission-ready. `npm run verify` green at 180
+tests across 19 files. Nine commits, clean tree.
