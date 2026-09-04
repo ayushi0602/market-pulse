@@ -191,8 +191,8 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
             <span className="muted">
               {symbol} ended at {current === undefined ? '—' : formatPrice(current)} —{' '}
               {formatPercent(net)} against where it started. A snapshot taken now would show you
-              that number and nothing else, and{' '}
-              {pluralise(timeline.length, 'meaningful transition')} would be invisible.
+              that number and nothing else, and {pluralise(timeline.length, 'meaningful change')}{' '}
+              would be invisible.
             </span>
           </p>
         </div>

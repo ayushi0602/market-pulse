@@ -197,9 +197,9 @@ export function TraditionalWatchlist({ feed }: { feed: AttentionFeedResponse }) 
         <p>
           <strong>What this view cannot tell you</strong>
           <span className="muted">
-            {pluralise(feed.summary.meaningfulChanges, 'meaningful transition')} happened while you
-            were away. This view compares two prices and discards everything in between, so it
-            cannot show them — however large they were.
+            {pluralise(feed.summary.meaningfulChanges, 'meaningful change')} happened while you were
+            away. This view compares two prices and discards everything in between, so it cannot
+            show them — however large they were.
           </span>
         </p>
       </div>

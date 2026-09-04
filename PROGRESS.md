@@ -781,3 +781,36 @@ A component library (`InstrumentRow`, `StatusPill`, `PriceDisplay`,
 `StoryTimeline`). Three screens do not need one, and it is exactly the
 speculative abstraction §2.3 exists to refuse. Consistent tokens and type scale,
 yes; a component layer, no.
+
+### Terminology audit and submission walk
+
+The UI copy changed in iteration 8, so the docs were checked against the strings
+the app actually renders rather than against memory. Two real mismatches:
+
+1. **The README's walkthrough step 3 was stale.** It described the feed as
+   "ranked by significance rather than recency" — true before the grouping
+   change, wrong after it. Rewritten to describe both axes, and to point at the
+   "Why is this significant?" disclosure, which did not exist when it was
+   written. Step 5 now mentions the shape filling in.
+2. **The UI used two words for one count.** "2 meaningful changes" on the cards,
+   "2 meaningful transitions happened" in the punchline copy — same number, two
+   nouns, which invites a reader to wonder whether they are different things.
+   Unified on *change* in the UI. *Transition* stays the precise word in
+   ARCHITECTURE.md, where precision matters more than plainness.
+
+The demo script artifact was updated to match: beat 3 now describes the grouping,
+and a new optional beat covers the threshold disclosure.
+
+Submission walk, both widths, against the running app:
+
+| Step | Desktop (900px) | Phone (390px) |
+| --- | --- | --- |
+| Watchlist — "3 instruments followed. 2 need your attention." | ✅ | ✅ |
+| TCS quiet — "✓ No meaningful changes / ₹3,805.00 / As recorded" | ✅ | ✅ |
+| Feed grouped, INFY before RELIANCE | ✅ | ✅ |
+| "Why is this significant?" opens | ✅ | ✅ |
+| Comparison shows a flat `0.00%` | ✅ | ✅ |
+| Replay closes on "The price went nowhere. The story did not." | ✅ | ✅ |
+
+No horizontal overflow at either width on any screen. `db:reset` → `db:seed`
+rebuilds the demo; a second `db:seed` refuses.

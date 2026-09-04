@@ -79,8 +79,11 @@ price, and *"No meaningful changes"*. It is quiet, and it is still here.
 **2 — Note RELIANCE:** *"2 meaningful changes — but the price came back."* Click
 **View what happened →**.
 
-**3 — *While you were away*** shows what crossed the threshold, ranked by
-significance rather than recency. INFY's genuine 20% fall leads.
+**3 — *While you were away*** groups what crossed the threshold by instrument.
+Instruments are ordered by their largest move — INFY's genuine 20% fall leads —
+and each instrument's own events run in the order they happened. Open **Why is
+this significant?** on any of them to see the anchor, the move and the threshold
+that fired.
 
 **4 — Toggle to *Traditional watchlist*.** Same data, same moment:
 
@@ -90,9 +93,10 @@ RELIANCE   ₹2,900.00   0.00%   No change since your last check
 
 Toggle back. **The price went nowhere. The story did not.**
 
-**5 — Open *Replay*.** Step through it. The snapshot number moves — 0.00%, then
-−9.00%, then back to 0.00% — while the revealed events stay on screen. Watching
-changes nothing: not the events, and not your read position.
+**5 — Open *Replay*.** Step through it. The shape fills in as you go and the
+snapshot number moves — 0.00%, then −9.00%, then back to 0.00% — while the
+revealed events stay on screen. Watching changes nothing: not the events, and not
+your read position.
 
 ## Key engineering decisions
 
