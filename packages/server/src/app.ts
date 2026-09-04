@@ -4,6 +4,9 @@ import type { Database } from './db/connection.js';
 import { createSystemRoutes } from './modules/system/system.routes.js';
 import { createAttentionRoutes } from './modules/attention/attention.routes.js';
 import { createReplayRoutes } from './modules/replay/replay.routes.js';
+import { createWatchlistRoutes } from './modules/watchlist/watchlist.routes.js';
+import { createWatchlistStore } from './modules/watchlist/watchlist-store.js';
+import { createSnapshotStore } from './modules/market/snapshot-store.js';
 import { createEventStore } from './modules/market/event-store.js';
 import { createWatermarkStore } from './modules/attention/watermark-store.js';
 import { uuidEventIds } from './ids.js';
@@ -24,11 +27,14 @@ export function createApp({ db, version, clock = systemClock }: CreateAppOptions
 
   const events = createEventStore(db, uuidEventIds, clock);
   const watermarks = createWatermarkStore(db, clock);
+  const snapshots = createSnapshotStore(db, clock);
+  const watchlist = createWatchlistStore(db, clock);
 
   app.use(express.json());
   app.use('/api', createSystemRoutes({ db, clock, version }));
   app.use('/api', createAttentionRoutes({ events, watermarks }));
   app.use('/api', createReplayRoutes({ events }));
+  app.use('/api', createWatchlistRoutes({ watchlist, snapshots, events, watermarks }));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not Found' });

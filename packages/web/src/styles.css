@@ -310,3 +310,19 @@ input[type='text'] {
   color: var(--text);
   border-bottom-color: var(--accent);
 }
+
+button.link {
+  appearance: none;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+button.link:hover {
+  color: var(--text);
+}

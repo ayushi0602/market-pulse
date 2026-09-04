@@ -4,8 +4,10 @@ import { loadConfig } from '../config.js';
 import { openDatabase } from './connection.js';
 import { migrate } from './migrate.js';
 import { createEventStore } from '../modules/market/event-store.js';
+import { createSnapshotStore } from '../modules/market/snapshot-store.js';
+import { createWatchlistStore } from '../modules/watchlist/watchlist-store.js';
 import { uuidEventIds } from '../ids.js';
-import { systemClock } from '@market-pulse/domain';
+import { systemClock, userId } from '@market-pulse/domain';
 
 /**
  * Demo data: the golden scenario, plus two contrasting instruments.
@@ -40,13 +42,34 @@ const db = openDatabase(config.databaseUrl);
 migrate(db);
 
 const store = createEventStore(db, uuidEventIds, systemClock);
+const snapshots = createSnapshotStore(db, systemClock);
+const watchlist = createWatchlistStore(db, systemClock);
+const demo = userId('demo');
+
 let written = 0;
 for (const ticks of streams) {
   written += store.append(observeTicks(ticks).events).length;
+
+  // The latest observation, taken from the last tick of the stream. In a system
+  // with real ingestion this is what the ingester would write; here it is the
+  // seed, because there is no ingestion yet and pretending otherwise would be
+  // the kind of overclaim this project keeps refusing to make.
+  const last = ticks[ticks.length - 1];
+  const first = ticks[0];
+  if (last !== undefined && first !== undefined) {
+    snapshots.record(first.instrumentId, last.price, last.at);
+    watchlist.add(demo, first.instrumentId);
+  }
 }
 
 console.log(
   `Seeded ${written} event(s) across ${streams.length} instruments (${config.databaseUrl}).`,
+);
+console.log(
+  `Watchlist for "demo": ${watchlist
+    .list(demo)
+    .map((entry) => entry.instrumentId)
+    .join(', ')}`,
 );
 console.log(`Log head is now ${store.head()}. Open http://localhost:5173 as any user.`);
 db.close();

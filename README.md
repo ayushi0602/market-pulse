@@ -65,6 +65,19 @@ Then open http://localhost:5173 and toggle between **Traditional watchlist** and
 view reports 0.00%, and the feed reports the 9% fall and the 9.89% recovery that
 happened in between.
 
+The app opens on **My watchlist** — everything you follow, including
+instruments that have done nothing. TCS is there with a recorded price and "No
+meaningful changes"; RELIANCE is flagged with "2 meaningful changes — but the
+price came back". That contrast is the product:
+
+```
+WATCHLIST        what I care about
+ATTENTION FEED   what changed enough to deserve attention
+```
+
+They are deliberately different lists. Prices are labelled *as recorded*, never
+*live*, because there is no market ingestion behind them.
+
 The **Replay** tab steps through the same history one event at a time. The
 snapshot number moves — 0.00%, then −9.00%, then back to 0.00% — while the
 revealed events stay on screen. Watching it changes nothing: not the events, and

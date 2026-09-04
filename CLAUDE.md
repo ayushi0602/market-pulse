@@ -235,34 +235,26 @@ proxied so there is no CORS to maintain.
 | 2 | Domain model + golden scenario | ✅ done |
 | 3 | Persistence for the event log and watermarks | ✅ done |
 | 4 | Attention feed API + "Since you last checked" | ✅ done |
-| 5 | **Watchlist context, or simulated ingestion** | ⏳ next |
+| 5 | Watchlist + instrument snapshots | ✅ done |
 | 6 | Replay / demo mode | ✅ done |
+| 7 | **Demo polish and reviewer journey** | ⏳ next |
 
 ### Next phase scope
 
-The engineering is done; what remains is making the product legible to someone
-seeing it for the first time. Two candidates:
+**Stop adding features.** Every part of the original brief is now answered:
+create and manage a watchlist, see the latest market information, return later
+and find out what changed. The remaining risk is presentation, not correctness.
 
-**Watchlist context.** The feed answers "what deserves attention". It cannot
-answer "what am I watching" — an instrument that never crosses the threshold
-(TCS in the seed) appears nowhere, which is *correct for a feed and wrong for a
-watchlist*. That distinction is worth making explicit:
+What is left:
 
-```
-Watchlist       = what the user cares about
-Attention feed  = what changed enough to deserve attention
-```
+- A reviewer journey that lands the argument in under a minute: watchlist →
+  attention → comparison → replay.
+- README that opens with the problem and the thesis, not the folder structure.
+- Anything that makes the four-concept architecture legible at a glance.
 
-Needs a price source for quiet instruments, which is the first thing the log
-alone cannot supply.
-
-**Simulated ingestion.** Feed ticks through `observeTick` on a timer and append
-what it emits. This is a real phase, not a garnish: duplicate ticks,
-out-of-order arrival, staleness, what survives restart, and where market state
-lives between ticks are all undecided.
-
-Constraint either way: stop adding backend cleverness. The remaining risk is
-presentation, not correctness.
+Explicitly not: live ingestion, multiple watchlists, auth, notifications,
+portfolio holdings, WebSockets. Each is defensible and none of them makes the
+submission better than a clear demo of what already works.
 
 ---
 
@@ -270,6 +262,36 @@ presentation, not correctness.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 6: watchlist and instrument snapshots
+
+The concept the product was missing: **what I care about**, as distinct from
+what changed enough to deserve attention.
+
+- **Added** `domain/watchlist/watchlist.ts` — `buildWatchlist` is a pure
+  function of (entries, snapshots, unread events). Attention is computed there
+  and never stored (W3).
+- **Added** migration `003`: `instrument_snapshots` (mutable knowledge) and
+  `watchlist_entries` (per user, one list). The contrast with the append-only
+  `market_events` is the product thesis at the schema level.
+- **Added** stores and `GET/POST/DELETE /api/watchlist`, plus the "My watchlist"
+  tab, now the app's entry point.
+- **`undefined` is not zero.** A quiet instrument reports `netChangeBps:
+  undefined`, not `0` — "nothing happened" and "it moved and came back" are
+  different facts.
+- **Freshness labels** say "As recorded 2:15 PM" or "Never observed", never
+  "live". A test asserts those words are absent.
+
+W1–W5 mutation-tested. W4 is guarded three deep, and the mutation proved it:
+forcing a deletion into the request path **could not execute** — the append-only
+trigger from 002 aborted it.
+
+Named `instrument_snapshots`, not `market_state`, because the domain already has
+a `MarketState` (the engine's fold state) and the collision would be genuinely
+confusing.
+
+Gate: `npm run verify` green — 179 tests, 22 files. Verified live: the watchlist
+returns RELIANCE, INFY and TCS; the feed returns only RELIANCE and INFY.
 
 ### 2026-09-04 — Phase 5: replay
 

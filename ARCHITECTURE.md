@@ -334,6 +334,68 @@ The demo. Stepping through the golden scenario shows the snapshot number moving
 away. The closing line is the product thesis in one sentence: *the price went
 nowhere; the story did not.*
 
+## Watchlist and instrument snapshots
+
+Four concepts, each answering a different question:
+
+```
+WATCHLIST        what I care about
+SNAPSHOT         the latest we recorded
+ATTENTION FEED   what changed enough to deserve attention
+REPLAY           what happened along the way
+```
+
+The watchlist and the feed are **not the same list**, and the difference is the
+product. An instrument that never crosses the significance threshold produces no
+events and appears nowhere in the feed — correct for a feed, wrong for a
+watchlist. Keeping them separate lets both be right.
+
+### Two tables with opposite natures
+
+| Table | Nature | Rule |
+| --- | --- | --- |
+| `market_events` | History | Append-only. Never overwritten. |
+| `instrument_snapshots` | Knowledge | Overwritten as it changes. |
+
+Snapshots are mutable **on purpose**, and that is not a weakening of I2: a
+snapshot makes no claim about the past. A traditional watchlist keeps only the
+second kind, which is exactly why it is silent about everything between two
+readings.
+
+Named `instrument_snapshots` rather than `market_state`: the domain already has
+a `MarketState` — the significance engine's fold state (anchor, last price, last
+instant) — and reusing that name for "latest recorded observation" would make two
+genuinely different things look like one.
+
+### Watchlist invariants
+
+| # | Invariant | How it holds |
+| --- | --- | --- |
+| **W1** | Membership is independent of market events | `buildWatchlist` takes membership from `entries` alone; no foreign key ties an entry to an event |
+| **W2** | Quiet instruments still have a latest recorded state | Snapshots are stored per instrument, independent of whether it ever crossed a threshold |
+| **W3** | Attention is derived, never stored | Computed per read from unread events; there is no `hasMeaningfulChange` column to invalidate |
+| **W4** | Removing an instrument does not delete history | The watchlist store has no access to `market_events`, `EventStore` exposes no delete, and the DB trigger aborts one |
+| **W5** | Watchlist changes survive a restart | Proved with a real child process, as in Phase 3 |
+
+W4 is guarded three deep. The mutation test is the evidence: forcing a deletion
+into the request path did not merely fail a test, it **could not execute** — the
+append-only trigger from migration 002 aborted it.
+
+### `undefined` is not zero
+
+A quiet instrument reports `netChangeBps: undefined`, not `0`. "Nothing
+meaningful happened" and "it moved 9% and came back" are different facts, and a
+watchlist that reported `0.00%` for both would be making precisely the mistake
+this product exists to point out. The UI renders them differently too: *"No
+meaningful changes"* versus *"2 meaningful changes — but the price came back"*.
+
+### Freshness labelling
+
+`latestPrice` is the last observation this system recorded. The UI says
+**"As recorded 2:15 PM"**, or **"Never observed"** for an instrument we follow but
+have never seen. It never says "live" or "current", because there is no
+ingestion behind it — and a test asserts those words are absent.
+
 ## Explicitly deferred
 
 Deferred means *"we have a place to put it, and we are not building it now."*

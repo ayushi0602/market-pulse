@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 5 — replay |
+| **Iteration** | 6 — watchlist |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 142 passing, 18 files |
+| **Tests** | 179 passing, 22 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
 | **Market features** | End to end: engine → log → watermark → API → screen. |
 
-**Next up:** watchlist context or simulated ingestion — the remaining risk is
-presentation, not correctness. Scope is recorded in [CLAUDE.md](CLAUDE.md).
+**Next up:** demo polish and the reviewer journey. Every part of the original
+brief is now answered; the remaining risk is presentation, not correctness.
 
 ---
 
@@ -506,3 +506,83 @@ it is now been the cause of both lint failures in the web package.
   feed; wrong for a watchlist. That distinction is the next phase.
 - No tick ingestion; events still arrive via the seed script or tests.
 - Still no CI, no auth.
+
+---
+
+## Iteration 6 — Watchlist and instrument snapshots
+
+**Date:** 2026-09-04
+**Goal:** Add the concept the product was missing — *what I care about*, as
+distinct from *what changed enough to deserve attention*.
+
+### Built
+
+| File | Contents |
+| --- | --- |
+| `domain/watchlist/watchlist.ts` | `WatchlistEntry`, `InstrumentSnapshot`, `buildWatchlist` |
+| `db/migrations/003_watchlist.sql` | `instrument_snapshots`, `watchlist_entries` |
+| `modules/market/snapshot-store.ts` | `record`, `list` — mutable, monotonic in observation time |
+| `modules/watchlist/watchlist-store.ts` | `list`, `add`, `remove` |
+| `modules/watchlist/watchlist.routes.ts` | `GET`/`POST`/`DELETE /api/watchlist` |
+| `web/src/Watchlist.tsx` | The "My watchlist" tab, now the entry point |
+
+### Decisions
+
+| Decision | Reasoning |
+| --- | --- |
+| Watchlist and attention feed are different lists | An instrument that never crosses the threshold belongs on one and not the other. Merging them would force one of the two to be wrong. |
+| `instrument_snapshots`, not `market_state` | *Deviation from the sketched name.* The domain already has `MarketState` — the engine's fold state. Reusing the name for "latest recorded observation" would make two different things look like one. |
+| Snapshots are mutable; events are not | The contrast is the product thesis at the schema level. A snapshot makes no claim about the past, so overwriting it does not weaken I2. |
+| Attention derived per read, never stored | A `hasMeaningfulChange` flag would need invalidating on every append and every acknowledgement, and would be wrong in between (W3). |
+| `netChangeBps: undefined` for quiet instruments, not `0` | "Nothing meaningful happened" and "it moved 9% and came back" are different facts. Reporting `0.00%` for both is the exact mistake this product exists to point out. |
+| Snapshot upsert is monotonic in `observed_at` | A late-arriving reading of an older moment must not overwrite a newer one — the same argument as the watermark, enforced the same way. |
+| Adding twice is a no-op, not an error | The entry is a fact about interest, and it was already true. `added_at` does not reset. |
+| No `watchlist_id` | Consistent with 002. One watchlist per user until a second one exists. |
+| No day-change percentage for quiet instruments | The sketched mockup showed TCS at "0.8%". There is no baseline in the data to compute that from, and inventing one would break the rule the project has held since Phase 3: never let the UI claim more than the data model knows. |
+
+### Verified
+
+| Invariant | Status |
+| --- | --- |
+| **W1** membership independent of events | Quiet instrument listed; instrument never observed listed; instruments not followed absent |
+| **W2** quiet instruments have recorded state | Snapshot price and observation time both present |
+| **W3** attention derived, not stored | Flips to quiet after acknowledgement with nothing written; two users differ over identical contents; reading the watchlist advances no watermark |
+| **W4** removal preserves history | Event rows byte-identical; replay still complete; re-adding restores the full count |
+| **W5** survives restart | Real child process writes entries and snapshots, exits; reopened database has both |
+
+- `npm run verify` → green: **179 tests in 22 files**.
+- **Verified live:** the watchlist returns RELIANCE, INFY *and* TCS; the
+  attention feed returns only RELIANCE and INFY. The two lists differ, on
+  purpose, in the running system.
+- **Mutation-tested.** Dropping instruments with no events (16 failures),
+  reporting `0` instead of `undefined` for quiet instruments (2), and letting a
+  snapshot move backwards in observation time (1) each broke the matching
+  invariant.
+
+  The W4 mutation is worth recording precisely. The first attempt **failed to
+  apply** — a quoting error in the mutation script, not a result, and reported
+  as such rather than as a pass. Retried by forcing a deletion into the request
+  path at the app-wiring level, it did not merely fail a test: it **could not
+  execute**, because the append-only trigger from migration 002 aborted the
+  statement. W4 is guarded three deep — the store has no access to
+  `market_events`, `EventStore` exposes no delete, and the database refuses one.
+
+### Course corrections
+
+- Making the watchlist the entry point broke 8 App tests, which had rendered
+  straight onto the attention screen. Fixed by navigating: the tests now click
+  through the tab a real user lands on. A test asserting against a screen users
+  do not first see is testing the wrong thing.
+- A stray non-ASCII character (`需`) got into a template string while editing.
+  Caught before commit; noted because it would have shipped silently in a string
+  no test read.
+- The `String(body)` lint error from Iteration 4 recurred verbatim in a new test
+  file. Fixed the same way — assert the body is a string, then parse.
+
+### Open items carried forward
+
+- No ingestion. Snapshots and events both come from the seed script or tests;
+  in a system with real ingestion the ingester would write both.
+- Quiet instruments show a price and an observation time but no percentage,
+  because there is no baseline to compute one from.
+- Still no CI, no auth. `userId` remains a query parameter and a text box.

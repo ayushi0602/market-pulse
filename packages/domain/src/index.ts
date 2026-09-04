@@ -9,6 +9,8 @@ export type {
   FeedEvent,
   FeedInstrumentSummary,
   ReplayResponse,
+  WatchlistResponse,
+  WatchlistRowView,
 } from './contracts/attention.js';
 
 export type { BasisPoints, PriceMinor } from './market/money.js';
@@ -36,6 +38,14 @@ export type { InstrumentSummary } from './attention/feed.js';
 export { summariseUnread } from './attention/feed.js';
 
 export { rankBySignificance } from './attention/ranking.js';
+
+export type {
+  AttentionStatus,
+  InstrumentSnapshot,
+  WatchlistEntry,
+  WatchlistRow,
+} from './watchlist/watchlist.js';
+export { buildWatchlist } from './watchlist/watchlist.js';
 
 export type { Replay } from './replay/replay.js';
 export {

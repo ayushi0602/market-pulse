@@ -3,6 +3,15 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { App } from './App.js';
 
+/**
+ * The app opens on the watchlist, so every attention-feed test navigates there
+ * first. That is the real entry point, and a test that skipped it would be
+ * asserting against a screen users do not land on.
+ */
+async function openAttentionTab() {
+  fireEvent.click(await screen.findByRole('tab', { name: 'While you were away' }));
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -55,6 +64,8 @@ const emptyFeed: AttentionFeedResponse = {
   events: [],
 };
 
+const emptyWatchlist = { userId: 'demo', rows: [] };
+
 function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((url: string, init?: RequestInit) =>
     Promise.resolve(
@@ -70,38 +81,42 @@ function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
 
 describe('the returning user sees what they missed', () => {
   it('leads with the number of meaningful changes', async () => {
-    stubFetch(() => goldenFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    expect(await screen.findByText('While you were away')).toBeDefined();
+    expect(await screen.findByRole('heading', { name: 'While you were away' })).toBeDefined();
     expect(screen.getByText(/2 meaningful changes/)).toBeDefined();
   });
 
   it('shows the decline and the recovery, with the prices that bracket them', async () => {
-    stubFetch(() => goldenFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    await screen.findByText('While you were away');
+    await screen.findByRole('heading', { name: 'While you were away' });
     expect(screen.getByText(/Fell 9\.00%/)).toBeDefined();
     expect(screen.getByText(/Recovered 9\.89%/)).toBeDefined();
     expect(screen.getByText(/₹2,900\.00 → ₹2,639\.00/)).toBeDefined();
   });
 
   it('states plainly that a snapshot view would show nothing', async () => {
-    stubFetch(() => goldenFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    await screen.findByText('While you were away');
+    await screen.findByRole('heading', { name: 'While you were away' });
     expect(screen.getByText(/would have shown you 0\.00% and nothing else/)).toBeDefined();
   });
 });
 
 describe('the comparison toggle', () => {
   it('shows the traditional view reporting no change on the same data', async () => {
-    stubFetch(() => goldenFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    await screen.findByText('While you were away');
+    await screen.findByRole('heading', { name: 'While you were away' });
     fireEvent.click(screen.getByRole('button', { name: 'Traditional watchlist' }));
 
     // The whole argument in one screen: same events, 0.00%, and an admission.
@@ -113,10 +128,11 @@ describe('the comparison toggle', () => {
   });
 
   it('returns to the Market Pulse view', async () => {
-    stubFetch(() => goldenFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    await screen.findByText('While you were away');
+    await screen.findByRole('heading', { name: 'While you were away' });
     fireEvent.click(screen.getByRole('button', { name: 'Traditional watchlist' }));
     fireEvent.click(screen.getByRole('button', { name: 'Market Pulse' }));
     expect(screen.getByText(/Fell 9\.00%/)).toBeDefined();
@@ -125,10 +141,11 @@ describe('the comparison toggle', () => {
 
 describe('F1 at the client boundary: rendering never acknowledges', () => {
   it('issues no write request when the feed is displayed', async () => {
-    const spy = stubFetch(() => goldenFeed);
+    const spy = stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
     render(<App />);
+    await openAttentionTab();
 
-    await screen.findByText('While you were away');
+    await screen.findByRole('heading', { name: 'While you were away' });
 
     const writes = spy.mock.calls.filter(([, init]) => init?.method === 'POST');
     expect(writes).toHaveLength(0);
@@ -137,6 +154,7 @@ describe('F1 at the client boundary: rendering never acknowledges', () => {
   it('acknowledges only when the user asks, and only up to what was shown', async () => {
     let acknowledged = false;
     const spy = stubFetch((url) => {
+      if (url.includes('watchlist')) return emptyWatchlist;
       if (url.includes('/ack')) {
         acknowledged = true;
         return { userId: 'demo', lastSeenSequence: 2 };
@@ -145,7 +163,8 @@ describe('F1 at the client boundary: rendering never acknowledges', () => {
     });
 
     render(<App />);
-    await screen.findByText('While you were away');
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }));
 
     await waitFor(() => {
@@ -165,8 +184,9 @@ describe('F1 at the client boundary: rendering never acknowledges', () => {
 
 describe('the caught-up state', () => {
   it('offers nothing to acknowledge when the feed is empty', async () => {
-    stubFetch(() => emptyFeed);
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : emptyFeed));
     render(<App />);
+    await openAttentionTab();
 
     expect(await screen.findByText('You are all caught up')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Mark all as read' })).toHaveProperty(
@@ -184,6 +204,7 @@ describe('failure is explained, not hidden', () => {
       vi.fn(() => Promise.resolve(new Response('nope', { status: 500 }))),
     );
     render(<App />);
+    await openAttentionTab();
     expect(await screen.findByText('Something went wrong')).toBeDefined();
     expect(screen.getByText(/API responded 500/)).toBeDefined();
   });

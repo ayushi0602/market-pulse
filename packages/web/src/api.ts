@@ -2,6 +2,7 @@ import type {
   AcknowledgeResponse,
   AttentionFeedResponse,
   ReplayResponse,
+  WatchlistResponse,
 } from '@market-pulse/domain';
 
 async function json<T>(response: Response): Promise<T> {
@@ -48,5 +49,40 @@ export async function fetchReplay(
   const init = signal ? { signal } : {};
   return json<ReplayResponse>(
     await fetch(`/api/replay?instrumentId=${encodeURIComponent(instrumentId)}`, init),
+  );
+}
+
+export async function fetchWatchlist(
+  userId: string,
+  signal?: AbortSignal,
+): Promise<WatchlistResponse> {
+  const init = signal ? { signal } : {};
+  return json<WatchlistResponse>(
+    await fetch(`/api/watchlist?userId=${encodeURIComponent(userId)}`, init),
+  );
+}
+
+export async function addToWatchlist(
+  userId: string,
+  instrumentId: string,
+): Promise<WatchlistResponse> {
+  return json<WatchlistResponse>(
+    await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ userId, instrumentId }),
+    }),
+  );
+}
+
+export async function removeFromWatchlist(
+  userId: string,
+  instrumentId: string,
+): Promise<WatchlistResponse> {
+  return json<WatchlistResponse>(
+    await fetch(
+      `/api/watchlist/${encodeURIComponent(instrumentId)}?userId=${encodeURIComponent(userId)}`,
+      { method: 'DELETE' },
+    ),
   );
 }

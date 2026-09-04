@@ -3,10 +3,11 @@ import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { acknowledge, fetchFeed } from './api.js';
 import { AttentionFeed, TraditionalWatchlist } from './AttentionFeed.jsx';
 import { ReplayView } from './Replay.jsx';
+import { Watchlist } from './Watchlist.jsx';
 import { pluralise } from './format.js';
 
 type View = 'pulse' | 'traditional';
-type Tab = 'attention' | 'replay';
+type Tab = 'watchlist' | 'attention' | 'replay';
 
 type State =
   | { status: 'loading' }
@@ -16,7 +17,7 @@ type State =
 export function App() {
   const [user, setUser] = useState('demo');
   const [view, setView] = useState<View>('pulse');
-  const [tab, setTab] = useState<Tab>('attention');
+  const [tab, setTab] = useState<Tab>('watchlist');
   const [state, setState] = useState<State>({ status: 'loading' });
   const [acknowledging, setAcknowledging] = useState(false);
 
@@ -77,6 +78,14 @@ export function App() {
         <button
           type="button"
           role="tab"
+          aria-selected={tab === 'watchlist'}
+          onClick={() => setTab('watchlist')}
+        >
+          My watchlist
+        </button>
+        <button
+          type="button"
+          role="tab"
           aria-selected={tab === 'attention'}
           onClick={() => setTab('attention')}
         >
@@ -91,6 +100,13 @@ export function App() {
           Replay
         </button>
       </div>
+
+      {tab === 'watchlist' && (
+        <>
+          <h1>My watchlist</h1>
+          <Watchlist userId={user} />
+        </>
+      )}
 
       {tab === 'replay' && (
         <>

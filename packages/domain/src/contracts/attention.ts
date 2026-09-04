@@ -77,3 +77,25 @@ export interface ReplayResponse {
   /** Ordered by sequence. Every recorded event, regardless of who has read it. */
   readonly timeline: readonly FeedEvent[];
 }
+
+/**
+ * One row of the watchlist: what the user follows, and the latest we know.
+ *
+ * `latestPrice` and `observedAt` are what we last *recorded*, never a live
+ * price. Any label rendered from them must say so.
+ */
+export interface WatchlistRowView {
+  readonly instrumentId: string;
+  /** Absent when we follow an instrument we have never observed. */
+  readonly latestPrice: number | undefined;
+  readonly observedAt: number | undefined;
+  readonly meaningfulChanges: number;
+  /** Absent when nothing meaningful happened — distinct from a net move of 0. */
+  readonly netChangeBps: number | undefined;
+  readonly attention: 'quiet' | 'changed';
+}
+
+export interface WatchlistResponse {
+  readonly userId: string;
+  readonly rows: readonly WatchlistRowView[];
+}
