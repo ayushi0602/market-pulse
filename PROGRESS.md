@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 1.5 — quality gate |
+| **Iteration** | 2 — domain model |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 12 passing, 4 files |
+| **Tests** | 59 passing, 9 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
-| **Market features** | None yet — by design |
+| **Market features** | Domain core complete and tested. Nothing persisted, no API, no UI. |
 
-**Next up:** Iteration 2 — domain model and the golden scenario. Scope and
-constraints are recorded in [CLAUDE.md](CLAUDE.md).
+**Next up:** Iteration 3 — persistence for the event log and watermarks. Scope
+and constraints are recorded in [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -180,3 +180,101 @@ Three defects found by reading the code, all of the "works on my machine" family
   remains a hard requirement, documented in `README.md` and `engines`.
 - No CI. Add when a remote exists.
 - Domain vocabulary is still documented and unimplemented — that is Iteration 2.
+
+---
+
+## Iteration 2 — Domain model and the golden scenario
+
+**Date:** 2026-09-04
+**Goal:** Build the product's core as pure domain logic, and prove the signature
+behaviour. Explicitly *not* to persist it, expose it, or render it.
+
+### Pre-work: two review items verified against the code
+
+Before starting, two concerns raised in review were checked rather than assumed:
+
+1. **Is `version` read at the composition boundary?** Yes. `readAppVersion()`
+   lives in `server/src/version.ts` and is called only from `index.ts`, which
+   passes it into `createApp`. `packages/domain` contains no reference to
+   `package.json` and no `node:` import — and the boundary lint rule would
+   reject one.
+
+2. **Does the config regression test assert independently?** It did not call the
+   production function, but it derived the repository root by the *same
+   technique* — counting `../` from a file three levels deep. If that segment
+   count were wrong, or if `config.ts` moved, both would have been wrong
+   together. It now finds the root by **searching upward for the manifest that
+   declares the workspaces**, which is an independent route to the same answer.
+   Confirmed by mutation: changing `../../../` to `../../` in `config.ts` makes
+   the test fail. A second test now asserts the invariant directly — the
+   resolved path is identical whether `loadConfig` runs from the repo root or
+   from `packages/server`.
+
+Two rules were added to `CLAUDE.md` before building under it: **§2.8** never
+weaken a test, lint rule, or type to make the gate pass, and **§2.9** every
+feature must name the product invariant it upholds.
+
+### Built
+
+`packages/domain` only.
+
+| Module | Contents |
+| --- | --- |
+| `market/money.ts` | `PriceMinor` (branded integer minor units), `BasisPoints`, conversions |
+| `market/instrument.ts` | `InstrumentId` |
+| `market/tick.ts` | `MarketTick` — raw input, not history |
+| `market/event.ts` | `MeaningfulMarketEvent` — a complete, self-contained statement of a transition |
+| `market/significance.ts` | `MarketState`, `observeTick`, `observeTicks` — the engine |
+| `market/log.ts` | `EventSequence`, `append`, `recordsAfter` — append-only history |
+| `attention/user.ts` | `UserId` |
+| `attention/watermark.ts` | `UserReadWatermark`, `unreadFor`, `markRead`, `joiningAt` |
+
+### Decisions
+
+| Decision | Reasoning |
+| --- | --- |
+| Prices as integer minor units, magnitudes in basis points | `0.1 + 0.2 !== 0.3`. Determinism (I3) and threshold comparisons both need exactness. Branded so a bare `number` cannot be substituted. |
+| Significance measured from a moving **anchor**, not the previous tick | Comparing consecutive ticks makes a slow slide invisible: twenty steps of -0.5% is a 10% fall in which no single step is significant. |
+| Re-anchor on emission | Otherwise every tick past the threshold re-reports the same move. |
+| Threshold is a parameter, not a constant | "Significant" is a product decision that will change, and a rule passed in is a rule a test can vary. |
+| Out-of-order and cross-instrument ticks throw | History is the source of truth. Silently accepting a tick from the past corrupts it in a way no later read can detect. |
+| An event carries `fromPrice`/`toPrice`, nothing derived at read time | An event needing the current price to be interpreted would not survive the user being away, which is the whole product. |
+| The recovery is its own event, not a correction | Append-only means the decline is never revised. The user missed two things and is told about both. |
+| Watermark is a value; reading does not advance it | Displaying an event and acknowledging it are different decisions, and only the caller knows which happened. |
+| `joiningAt` distinct from `newReader` | "New to the product" and "new to this instrument" differ; conflating them greets a first-time user with the entire history. |
+| No significance *ranking* yet | Ranking belongs with the Attention Feed in Phase 4. Building it now would be scope drift. |
+
+### Verified
+
+- `npm run verify` → green: format, lint, typecheck, **59 tests in 9 files**, build.
+- **Mutation-tested, not just executed.** Four deliberate defects were injected
+  and the suite was run against each:
+
+  | Injected defect | Result |
+  | --- | --- |
+  | Threshold made exclusive (`>` instead of `>=`) | 2 tests failed |
+  | Event reports `lastPrice` instead of the anchor | 2 tests failed |
+  | Engine stops re-anchoring after emission | 2 tests failed |
+  | Log records no longer frozen | 1 test failed |
+
+  All four were reverted and the suite returned to green. Test count is not a
+  quality signal; this is the evidence that the tests have teeth.
+
+### Known limitation, recorded deliberately
+
+A move that crosses the threshold in stages is reported as several events rather
+than one. 100 → 94 emits -6% and re-anchors, so the further fall to 91 (-3.2%
+from the new anchor) is not reported: the user is told "-6%" for what was really
+a -9% fall. A settle window would fix this. It is deferred until the feed exists
+to show whether it matters in practice, and it is written into ARCHITECTURE.md
+rather than left to be discovered.
+
+### Open items carried forward
+
+- Nothing is persisted — the log and watermarks live only in memory. That is
+  Iteration 3.
+- `observeTicks` folds a single instrument's stream. Multi-instrument fan-out
+  arrives when something needs it.
+- The 5% default threshold is legible for tests, not calibrated against real
+  market behaviour.
+- Still no CI; add when a remote exists.

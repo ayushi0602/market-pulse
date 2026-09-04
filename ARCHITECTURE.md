@@ -25,9 +25,9 @@ Two consequences follow from that sentence, and they drive the whole design:
 
 ## Core domain concepts
 
-These are the nouns the system is organised around. Only `Clock` exists in code
-today; the rest are defined here so the vocabulary is settled before the
-features land.
+These are the nouns the system is organised around. All of them now exist in
+`packages/domain` except the Attention Feed's ranking, which arrives with the
+feed API.
 
 | Concept | Meaning |
 | --- | --- |
@@ -45,6 +45,49 @@ Significance is relative to *when you last looked*. If we overwrote state, we
 would have to recompute "what changed" against a moving target and would lose
 the ability to explain *why* something mattered. Appending keeps both the facts
 and the ordering, and makes the per-user view a pure read over shared history.
+
+## The significance rule
+
+The engine folds ticks into state and emits an event when the move **from an
+anchor price** reaches a threshold (5% by default). On emission the anchor moves
+to the price that triggered it.
+
+```
+anchor 100  ->  96   -4.00%   below threshold, nothing said
+            ->  91   -9.00%   EVENT: decline 9%, anchor becomes 91
+            ->  95   +4.40%   below threshold, nothing said
+            -> 100   +9.89%   EVENT: advance 9.89%, anchor becomes 100
+```
+
+**Why an anchor rather than the previous tick.** Comparing consecutive ticks
+would make a slow slide invisible — twenty ticks of -0.5% is a 10% fall in which
+no single step is significant. The anchor accumulates.
+
+**Why re-anchor on emission.** Otherwise every subsequent tick past the
+threshold re-reports the same move.
+
+**Known limitation, stated plainly.** A move that crosses the threshold in
+stages is reported as several events rather than one. 100 → 94 emits -6% and
+re-anchors, so the further fall to 91 (-3.2% from 94) is not reported, and the
+user sees "-6%" for what was really a -9% fall. A settle window — waiting for
+the move to stop before emitting — would fix this and is deferred until the feed
+exists to show whether it matters in practice.
+
+The threshold is a `SignificanceRule` passed in, not a constant the engine
+hides, because "significant" is a product decision that will change and a rule
+passed in is a rule a test can vary.
+
+### Prices are integers
+
+Prices are stored as **integer minor units** (paise), never floating point, and
+magnitudes are carried in **basis points** (100 bps = 1%).
+
+This is not fastidiousness. `0.1 + 0.2 !== 0.3` in binary floating point, and
+two things here depend on exactness: the same ticks must produce byte-identical
+events on every machine (I3), and a threshold comparison must not depend on
+whether a value landed a fraction of a paisa either side of the line. The types
+are branded (`PriceMinor`), so a bare `number` cannot be passed where a price is
+expected.
 
 ## Module boundaries
 
@@ -143,6 +186,18 @@ idempotently, the API answers, and the client renders. It is deliberately thin �
 its job is to prove the wiring, and to fail loudly if the foundation breaks. Test
 count is not a quality metric here and should not be quoted as one; what matters
 is that the foundation's failure modes are covered.
+
+## Product invariants
+
+The four properties the system exists to guarantee. Every feature should trace
+to one; each is covered by tests named for it.
+
+| # | Invariant | Where it is proved |
+| --- | --- | --- |
+| **I1** | A meaningful event is independent of the final price. Recovery does not erase history. | `golden-scenario.test.ts` |
+| **I2** | Events are append-only. A record is never mutated or deleted. | `market/log.test.ts` |
+| **I3** | The significance engine is deterministic and pure. | `market/significance.test.ts` |
+| **I4** | Each user consumes events independently. | `attention/watermark.test.ts` |
 
 ## Quality gate
 

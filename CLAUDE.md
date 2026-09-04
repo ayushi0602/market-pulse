@@ -93,6 +93,49 @@ docs, or in a summary to the user. "Postgres is a driver swap" was wrong;
 "confined to `src/db/`, still needs a dialect pass" is right. Test *count* is
 not a quality signal and should never be quoted as one.
 
+### 2.8 Never weaken the gate to make it pass
+
+When `npm run verify` fails, fix the code. Do **not**:
+
+- change a test's expectation to match what the code currently does
+- delete or skip a failing test
+- add `// eslint-disable` or loosen a lint rule
+- widen a type, add `any`, add a non-null `!`, or relax a `tsconfig` flag
+
+A failing check is information. Silencing it destroys the information and leaves
+the defect. If a rule genuinely is wrong, say so explicitly, explain why, and
+get agreement — never change it silently as part of unrelated work.
+
+### 2.9 Every feature names the invariant it serves
+
+Before building anything, state which product invariant it exists to uphold:
+
+```
+Feature:  Read watermark
+Upholds:  Each user's "what I missed" is independent of every other user's.
+```
+
+```
+Feature:  Append-only event log
+Upholds:  A meaningful transition stays visible even after the price
+          returns to where it started.
+```
+
+If a feature cannot be traced to an invariant, it is not part of this product.
+This is the check against feature accumulation — the failure mode where each
+addition is individually defensible and the whole becomes unfocused.
+
+### Product invariants
+
+The four the system exists to guarantee:
+
+| # | Invariant |
+| --- | --- |
+| **I1** | A meaningful event is independent of the final price. Recovery does not erase history. |
+| **I2** | Events are append-only. Once generated, a record is never mutated or deleted. |
+| **I3** | The significance engine is deterministic and pure. Same ticks in, same events out, always. |
+| **I4** | Each user consumes events independently. One user reading changes nothing for another. |
+
 ---
 
 ## 3. How the code is organised
@@ -133,9 +176,11 @@ Match the density of the surrounding file.
 — take a `Clock`. This is what makes replay and "since you last checked"
 testable.
 
-**Money and prices.** Never use floating point for currency in stored or
-compared values. Decide the representation (minor units as integers) when the
-first price field lands, and record it here.
+**Money and prices.** Integer minor units (paise) via the branded `PriceMinor`
+type — never floating point. Magnitudes are basis points (100 bps = 1%). Build
+prices with `paise()` or `rupees()`; `toRupees()` / `toPercent()` are for
+display only and must never be compared against. Decided in Iteration 2; see
+ARCHITECTURE.md → *Prices are integers*.
 
 **SQL.** Hand-written, plain, parameterised. No SQLite-only syntax above
 `src/db/`.
@@ -187,34 +232,29 @@ proxied so there is no CORS to maintain.
 | --- | --- | --- |
 | 1 | Foundation: workspaces, domain/server/web, SQLite + migrations, health endpoint, smoke tests | ✅ done |
 | 1.5 | Quality gate: ESLint, Prettier, enforced boundaries, `verify` | ✅ done |
-| 2 | **Domain model + golden scenario** | ⏳ next |
-| 3 | Persistence for the event log and watermarks | ⬜ |
+| 2 | Domain model + golden scenario | ✅ done |
+| 3 | **Persistence for the event log and watermarks** | ⏳ next |
 | 4 | Attention feed API | ⬜ |
 | 5 | UI: "Since you last checked" | ⬜ |
 | 6 | Replay / demo mode | ⬜ |
 
-### Phase 2 scope (next)
+### Phase 3 scope (next)
 
-**Domain layer only.** No HTTP, no SQL, no React.
+**Persistence only.** Give the domain a durable home without changing its
+behaviour.
 
-Model, as pure functions and types in `packages/domain`:
+- A migration for the event log and per-user watermarks.
+- Repositories in `server/src/modules/` that read and write those tables.
+- The domain code does not change. If persisting the model requires reshaping
+  it, that is a signal worth raising, not a change to make quietly.
 
-```
-MarketTick  →  MarketState  →  MeaningfulMarketEvent  →  EventSequence  →  UserReadWatermark
-```
+The bar: the golden scenario must survive a process restart. Same assertions,
+against a real database, with the events written by one instance and read by
+another.
 
-And the signature test the whole submission rests on:
-
-> A user last looked at ₹100.
-> The stock falls to ₹91 — a meaningful event is generated.
-> The stock recovers to ₹100.
-> The user returns.
-> **→ The event is still surfaced.**
-
-A snapshot-diffing watchlist shows "no change". That test is the product.
-
-Constraints for Phase 2: no database work, no endpoints, no components, and no
-abstraction that a Phase 2 test does not exercise.
+Constraints: no endpoints, no UI, no abstraction a Phase 3 test does not
+exercise. `RecordedMarketEvent.sequence` is the log's ordering — do not replace
+it with a timestamp.
 
 ---
 
@@ -222,6 +262,35 @@ abstraction that a Phase 2 test does not exercise.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 2: domain model and the golden scenario
+
+The product's core, as pure functions. No HTTP, no SQL, no React.
+
+- **Added** `market/`: `money` (branded `PriceMinor`, basis points),
+  `instrument`, `tick`, `event`, `significance` (the engine), `log` (the
+  append-only sequence). **Added** `attention/`: `user`, `watermark`.
+- **Added** `golden-scenario.test.ts` — 100 → 96 → 91 → 95 → 100, user away,
+  user returns. It asserts the premise (a snapshot comparison genuinely reports
+  nothing) before asserting the product answer, so the scenario cannot quietly
+  stop proving anything.
+- **Decided** the significance rule: threshold from a moving *anchor*, not from
+  the previous tick, re-anchoring on emission. Its known limitation — a staged
+  move is reported as several smaller events — is written down in
+  ARCHITECTURE.md rather than left to be discovered.
+- **Decided** money representation: integer minor units, basis points. Recorded
+  in §4.
+
+Each invariant has a test block named for it (I1–I4). Those tests were
+**mutation-tested**: the threshold comparison, the anchor, the re-anchoring, and
+the log's freezing were each broken in turn, and in every case the matching
+tests failed. A test that has never failed is not known to work.
+
+Gate: `npm run verify` green — 59 tests, 9 files.
+
+Not done, deliberately: no persistence, no endpoints, no UI, and no significance
+*ranking* (that belongs with the feed in Phase 4). `observeTicks` handles one
+instrument; multi-instrument fan-out arrives when something needs it.
 
 ### 2026-09-04 — Phase 1.5: quality gate and audit fixes
 
