@@ -79,6 +79,23 @@ export interface ReplayResponse {
 }
 
 /**
+ * What there is to replay.
+ *
+ * Derived from the shared log and, like `ReplayResponse`, carrying no user: it
+ * answers "which instruments have a story" and never "which stories are mine".
+ * An instrument with no recorded events is absent, because a replay of nothing
+ * is not a thing to offer.
+ */
+export interface ReplayCatalogueResponse {
+  readonly instruments: readonly {
+    readonly instrumentId: string;
+    readonly events: number;
+    /** Largest single recorded move, so the picker can lead with the best story. */
+    readonly largestMoveBps: number;
+  }[];
+}
+
+/**
  * One row of the watchlist: what the user follows, and the latest we know.
  *
  * `latestPrice` and `observedAt` are what we last *recorded*, never a live

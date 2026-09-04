@@ -66,10 +66,28 @@ const emptyFeed: AttentionFeedResponse = {
 
 const emptyWatchlist = { userId: 'demo', rows: [] };
 
+/**
+ * The page furniture every screen loads: where prices come from, and which
+ * instruments have a story. Answered here so each test can keep describing only
+ * the endpoint it is actually about.
+ */
+const marketStatus = {
+  source: 'simulated',
+  running: true,
+  intervalMs: 3000,
+  lastTickAt: 1_700_000_000_000,
+  instruments: 3,
+  sequence: 2,
+};
+
+const replayCatalogue = {
+  instruments: [{ instrumentId: 'RELIANCE', events: 2, largestMoveBps: 989 }],
+};
+
 function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((url: string, init?: RequestInit) =>
     Promise.resolve(
-      new Response(JSON.stringify(handler(url, init)), {
+      new Response(JSON.stringify(ambient(url) ?? handler(url, init)), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -77,6 +95,13 @@ function stubFetch(handler: (url: string, init?: RequestInit) => unknown) {
   );
   vi.stubGlobal('fetch', spy);
   return spy;
+}
+
+/** Returns a canned body for the ambient endpoints, or undefined to defer. */
+function ambient(url: string): unknown {
+  if (url.includes('market-status')) return marketStatus;
+  if (url.includes('replay/instruments')) return replayCatalogue;
+  return undefined;
 }
 
 describe('the returning user sees what they missed', () => {
@@ -208,7 +233,9 @@ describe('failure is explained, not hidden', () => {
     render(<App />);
     await openAttentionTab();
     expect(await screen.findByText('Something went wrong')).toBeDefined();
-    expect(screen.getByText(/API responded 500/)).toBeDefined();
+    // Twice, deliberately: the market strip says the data source is
+    // unreachable, and the screen the user asked for says why it is empty.
+    expect(screen.getAllByText(/API responded 500/)).toHaveLength(2);
   });
 });
 
@@ -308,5 +335,68 @@ describe('the significance rule is visible, not implied', () => {
     // The first disclosure belongs to the decline, because events inside a
     // story run chronologically -- the fall came before the recovery.
     expect(panel?.textContent).toContain('9.00%');
+  });
+});
+
+describe('the wording never claims more than the events do', () => {
+  const rally: AttentionFeedResponse = {
+    userId: 'demo',
+    sinceSequence: 0,
+    throughSequence: 2,
+    summary: {
+      meaningfulChanges: 2,
+      instruments: [
+        {
+          instrumentId: 'TATAMOTORS',
+          priceWhenLastSeen: 78_000,
+          latestPrice: 89_000,
+          netChangeBps: 1410,
+          meaningfulChanges: 2,
+        },
+      ],
+    },
+    events: [
+      {
+        eventId: 'r-1',
+        sequence: 1,
+        instrumentId: 'TATAMOTORS',
+        direction: 'advance',
+        fromPrice: 78_000,
+        toPrice: 82_000,
+        magnitudeBps: 513,
+        occurredAt: 1_699_990_000_000,
+      },
+      {
+        eventId: 'r-2',
+        sequence: 2,
+        instrumentId: 'TATAMOTORS',
+        direction: 'advance',
+        fromPrice: 82_000,
+        toPrice: 89_000,
+        magnitudeBps: 854,
+        occurredAt: 1_700_000_000_000,
+      },
+    ],
+  };
+
+  it('says a rise rose, when nothing fell before it', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : rally));
+    render(<App />);
+    await openAttentionTab();
+
+    // "Recovered" asserts a prior decline. TATAMOTORS never fell, so saying it
+    // would be the UI claiming something the events do not contain.
+    expect(await screen.findByText(/Rose 5\.13%/)).toBeDefined();
+    expect(screen.getByText(/Rose 8\.54%/)).toBeDefined();
+    expect(screen.queryByText(/Recovered/)).toBeNull();
+  });
+
+  it('still says recovered when the story contains the fall it came back from', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
+    render(<App />);
+    await openAttentionTab();
+
+    expect(await screen.findByText(/Fell 9\.00%/)).toBeDefined();
+    expect(screen.getByText(/Recovered 9\.89%/)).toBeDefined();
   });
 });

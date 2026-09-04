@@ -396,6 +396,81 @@ meaningful changes"* versus *"2 meaningful changes — but the price came back"*
 have never seen. It never says "live" or "current", because there is no
 ingestion behind it — and a test asserts those words are absent.
 
+The client does not *decide* how fresh the data is. `GET /api/market-status`
+reports what the server is running and the client repeats it, so a server with
+no generator cannot end up behind a page claiming something is updating. The
+`MarketSource` union has exactly two members, `'simulated'` and `'static'`;
+adding `'live'` to it is how an overclaim would start, so it is not there.
+
+## The market simulator
+
+Generated prices, so the demo moves. **Not ingestion**, and the distinction is
+load-bearing.
+
+```
+simulator ──▶ observeTick (domain) ──▶ EventStore.append
+     │                                 SnapshotStore.record
+     └── no WatermarkStore
+```
+
+**A generated price gets no privileged path into history.** The simulator
+invents a price and then hands it to exactly the `observeTick` the seed and the
+tests use. It cannot write an event directly; it can only cause one by crossing
+the published threshold from the active anchor. That is why the "Why is this
+significant?" panel works on a simulated event without special-casing.
+
+**It is handed events and snapshots, and no watermark store.** A running market
+therefore cannot consume anyone's unread events (I4) — not because it is careful,
+but because it has nothing to call.
+
+**`createApp` builds it; only `index.ts` starts it.** The option is a factory
+rather than a flag, so that constructing an app — which every test does — can
+never spawn a background interval.
+
+### The walk, and why it is shaped this way
+
+Each instrument follows a mean-reverting random walk. Two terms: a shock that
+supplies the movement, and a pull back toward a resting level. Two decisions
+inside that are worth recording, because both were wrong first:
+
+**`volatility` means standard deviation.** A uniform draw over `[-w, w]` has a
+standard deviation of `w/√3`, so using the half-width directly made every
+instrument 42% calmer than its profile claimed — calm enough that an hour of
+simulation produced almost nothing. The shock is scaled by `√3` so the parameter
+means what it is named.
+
+**The resting level is where each seeded story ended, not where it opened.**
+Reverting toward the opening price looked more natural and destroyed the demo:
+INFY's story is a genuine 20% fall from 1500 to 1200, and a pull back toward
+1500 rallied it 25% in the first few minutes, turning the one instrument that is
+supposed to have actually gone down into another round trip. Each story keeps its
+shape by oscillating around its own ending.
+
+Measured rather than assumed: ~50 events per hour across twelve instruments, and
+prices within 5% of each story's ending price after four simulated hours.
+
+### Out-of-order ticks
+
+`observeTick` rejects a tick from the past rather than reordering or dropping it,
+because silently accepting one corrupts history in a way no later read can
+detect. That rejection is a `throw`, and the simulator calls it from a
+`setInterval` — so a clock stepping backwards would take the generator down. The
+simulator skips that instrument for that step instead. Recording nothing is
+cheap; inventing a timestamp to get past the check would be the dishonest fix.
+
+### Reproducibility
+
+The PRNG is seeded (mulberry32), so the whole simulation is a pure function of
+(seed, step count). A test asserts that the same seed writes the same history
+twice — without that, a failure in generated data would be unreproducible.
+
+### Calibrated quiet
+
+Three instruments (TCS, WIPRO, ITC) have a volatility that puts the 5% threshold
+roughly twenty-six standard deviations away. They stay quiet through a running
+demo, which the screen explaining "quiet is not the same as nothing" depends on.
+A test runs two thousand steps and asserts zero events.
+
 ## Explicitly deferred
 
 Deferred means *"we have a place to put it, and we are not building it now."*
@@ -408,9 +483,10 @@ demands it.
 | **Redis / external cache** | There is no measured read-latency problem. The feed query is a bounded read from one indexed table. |
 | **Microservices** | The boundaries above are enforced by package structure. Splitting them across a network would add failure modes without changing the design. |
 | **Postgres** | Deferred, not rejected. Expected once we need concurrent writers or hosted deployment. The SQL-only boundary is what keeps this cheap. |
-| **Real-time push (WebSocket/SSE)** | The product question is "what happened while I was away", which is inherently a pull-on-return interaction. Polling is sufficient until it isn't. |
+| **Real-time push (WebSocket/SSE)** | The client polls — 2s for the market header, 4s for the watchlist, 8s for the feed. A push channel buys latency nobody is measuring, and costs a connection lifecycle, a reconnect policy, and a second delivery path for the same data. |
+| **A real ingestion pipeline** | The simulator writes in-process through the ordinary stores. Duplicate ticks, out-of-order arrival across a network, backpressure, staleness detection and provider health are all undecided, and are a phase of their own rather than something to grow the simulator into. |
 | **Auth / multi-user identity** | Watermarks need a user id, but not yet a login. A stub identity is enough until the feed exists. |
-| **Background job scheduler** | Nothing runs on a schedule yet. Revisit when tick ingestion is real. |
+| **Background job scheduler** | The simulator's `setInterval` is the only scheduled work, and it lives in the composition root. A scheduler becomes interesting when something must survive a restart or run on more than one process. |
 | **Docker / deployment pipeline** | Local development needs no containers today. |
 | **ORM** | Hand-written SQL against a small schema is clearer and keeps the swap-to-Postgres path visible. Revisit if the schema grows awkward. |
 | **Shared component library / design system** | There are no UI screens yet. |

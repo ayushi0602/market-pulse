@@ -814,3 +814,68 @@ Submission walk, both widths, against the running app:
 
 No horizontal overflow at either width on any screen. `db:reset` → `db:seed`
 rebuilds the demo; a second `db:seed` refuses.
+
+---
+
+## Iteration 9 — a market that keeps moving
+
+Requested directly, and it reopens a cut (see CUT_LIST.md → *Reopened*). The
+honest reading of "make it real time" was built: a **simulator**, not a market
+data feed.
+
+### What was built
+
+| | |
+| --- | --- |
+| `modules/market/catalogue.ts` | The fictional market in one file — 12 instruments, their opening stories, and their volatility. The seed and the simulator read the same file so they cannot drift. |
+| `modules/market/simulator.ts` | A mean-reverting random walk per instrument, handed to the ordinary `observeTick`. Seeded PRNG, so a run is reproducible. |
+| `modules/market/market.routes.ts` | `GET /api/market-status` (what is running) and `POST` (pause/resume). |
+| `GET /api/replay/instruments` | What there is to replay. User-free, like replay itself. |
+| `web/usePoll.ts` | Polling with abort, stale-on-error, and an `override` for a write's own response. |
+| `web/MarketStatus.tsx` | The header strip: source, pace, log head, what arrived since the page opened, pause. |
+
+Data: **12 instruments, 18 seeded events, 3 deliberately quiet**, plus a second
+seeded reader (`priya`) whose watermark sits two thirds along — so "two people
+see different things" is demonstrable in the running app, not only in a test.
+
+UI: watchlist split into *Needs your attention* / *Quiet*, a flash on a price
+that actually changed, a replay instrument picker, an "arrived while this page
+was open" banner, and the threshold disclosure toned down to muted so twenty of
+them do not shout.
+
+### Bugs found by looking rather than by testing
+
+1. **The volatility parameter did not mean what it said.** A uniform draw over
+   [-w, w] has standard deviation w/√3, so every instrument was 42% calmer than
+   its profile claimed and an hour of simulation produced almost nothing.
+2. **Mean reversion pointed at the opening price**, which rallied INFY 25% in
+   the first few minutes and undid the one story that is supposed to be a
+   genuine fall. It now reverts to where each seeded story *ended*.
+3. **"Recovered" was applied to every advance.** Correct while RELIANCE was the
+   only instrument with one; wrong the moment the catalogue had a genuine rally.
+   `moveLabel` now derives the word from the story.
+4. **"— you were not watching" repeated twenty times** and had become filler.
+
+### A bug found by a test
+
+`observeTick` rejects an out-of-order tick, correctly. That rejection was inside
+a `setInterval`, so a clock stepping backwards would have taken the whole
+generator down. It now skips that instrument for that step rather than inventing
+a timestamp to satisfy the check.
+
+### Verification
+
+`npm run verify` green — **208 tests, 21 files**. Measured rather than assumed:
+
+| | |
+| --- | --- |
+| Event rate | ~1 per minute across the market; ~50/hour, stable across three seeds |
+| Price drift | ≤4.6% from each story's ending price after 4 simulated hours |
+| Quiet instruments | 0 events across 2000 steps, asserted by test |
+| Overflow at 390 / 768 / 900px | none, on all four screens |
+
+Live check over CDP: watchlist groups 9/3, feed shows 9 stories in largest-move
+order, wording reads *Rose* for TATAMOTORS and *Recovered* for RELIANCE, replay
+picker offers 9 stories and RELIANCE still closes on "The price went nowhere.
+The story did not."
+

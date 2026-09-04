@@ -70,6 +70,27 @@ describe('loadConfig', () => {
   it('rejects an unusable PORT rather than silently defaulting', () => {
     expect(() => loadConfig({ PORT: 'not-a-port' })).toThrow(/Invalid PORT/);
   });
+
+  it('runs the market simulation by default', () => {
+    // A demo about noticing change is a poor demo when nothing changes, so the
+    // generator is opt-out rather than opt-in.
+    expect(loadConfig({}).simulation).toEqual({ enabled: true, intervalMs: 3000 });
+  });
+
+  it('turns the simulation off only when asked plainly', () => {
+    expect(loadConfig({ MARKET_SIMULATION: 'off' }).simulation.enabled).toBe(false);
+    expect(loadConfig({ MARKET_SIMULATION: 'OFF' }).simulation.enabled).toBe(false);
+    // A typo must not silently disable it: the failure would look like a broken
+    // demo rather than a misconfiguration.
+    expect(loadConfig({ MARKET_SIMULATION: 'offf' }).simulation.enabled).toBe(true);
+  });
+
+  it('refuses an interval that would fill the log faster than anyone can read it', () => {
+    expect(() => loadConfig({ MARKET_SIMULATION_INTERVAL_MS: '0' })).toThrow(/Invalid MARKET/);
+    expect(() => loadConfig({ MARKET_SIMULATION_INTERVAL_MS: '-1' })).toThrow(/Invalid MARKET/);
+    expect(() => loadConfig({ MARKET_SIMULATION_INTERVAL_MS: 'soon' })).toThrow(/Invalid MARKET/);
+    expect(loadConfig({ MARKET_SIMULATION_INTERVAL_MS: '5000' }).simulation.intervalMs).toBe(5000);
+  });
 });
 
 describe('readAppVersion', () => {

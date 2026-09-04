@@ -1,6 +1,8 @@
 import type {
   AcknowledgeResponse,
   AttentionFeedResponse,
+  MarketStatusResponse,
+  ReplayCatalogueResponse,
   ReplayResponse,
   WatchlistResponse,
 } from '@market-pulse/domain';
@@ -52,6 +54,14 @@ export async function fetchReplay(
   );
 }
 
+/** Which instruments have a recorded story. Carries no user, like replay itself. */
+export async function fetchReplayInstruments(
+  signal?: AbortSignal,
+): Promise<ReplayCatalogueResponse> {
+  const init = signal ? { signal } : {};
+  return json<ReplayCatalogueResponse>(await fetch('/api/replay/instruments', init));
+}
+
 export async function fetchWatchlist(
   userId: string,
   signal?: AbortSignal,
@@ -84,5 +94,28 @@ export async function removeFromWatchlist(
       `/api/watchlist/${encodeURIComponent(instrumentId)}?userId=${encodeURIComponent(userId)}`,
       { method: 'DELETE' },
     ),
+  );
+}
+
+/**
+ * Where the prices come from, according to the server.
+ *
+ * The client never decides this. Every freshness label in the UI is repeating
+ * what this endpoint said, so a server with no generator running cannot end up
+ * behind a page claiming something is updating.
+ */
+export async function fetchMarketStatus(signal?: AbortSignal): Promise<MarketStatusResponse> {
+  const init = signal ? { signal } : {};
+  return json<MarketStatusResponse>(await fetch('/api/market-status', init));
+}
+
+/** Pauses or resumes generation. Affects future prices only; history is untouched. */
+export async function setMarketRunning(running: boolean): Promise<MarketStatusResponse> {
+  return json<MarketStatusResponse>(
+    await fetch('/api/market-status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ running }),
+    }),
   );
 }

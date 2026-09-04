@@ -145,6 +145,12 @@ ARCHITECTURE.md records how each one holds:
 | **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
 | **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
 
+The simulator has its own block in `packages/server/test/simulation.test.ts`. It
+asserts the thing that actually matters about generated data: that it gets no
+privilege real data would not have. Events only through the threshold, magnitudes
+that recompute, a reproducible seed, quiet instruments that stay quiet over two
+thousand steps, and read positions that do not move.
+
 **Several are structural rather than behavioural** — the replay route holds no
 `WatermarkStore` and the watchlist store cannot reach `market_events`, so those
 invariants cannot be violated without changing application wiring. Preserve that
@@ -191,6 +197,12 @@ Match the density of the surrounding file.
 — take a `Clock`. This is what makes replay and "since you last checked"
 testable.
 
+**Freshness claims.** The UI never invents one. `GET /api/market-status` says
+what the server is doing and the client repeats it. The word *live* is banned
+from the interface — prices are *"as recorded"*, the source is *simulated*, and
+three tests assert the word stays out. If a future change makes a price genuinely
+live, the contract's `MarketSource` union is where that starts.
+
 **Money and prices.** Integer minor units (paise) via the branded `PriceMinor`
 type — never floating point. Magnitudes are basis points (100 bps = 1%). Build
 prices with `paise()` or `rupees()`; `toRupees()` / `toPercent()` are for
@@ -212,6 +224,19 @@ you already have. Never call `setState` inside an effect to correct other state
 — that is what causes cascading renders, and the lint rule that catches it has
 now fired twice in this repo. "Playing but finished" was not a state the replay
 component could be in; it is computed. Both failures were this one mistake.
+
+**Refs may not be read during render.** `react-hooks/refs` enforces it. The
+"what was this value last render" pattern therefore uses **state adjusted during
+render**, not a ref — see `Watchlist.tsx`'s price flash and `App.tsx`'s arrival
+counter. Two rules for that pattern, both learned the hard way:
+
+- Guard on something that is *structurally* different after the write. A guard
+  of `if (x === undefined) setX(response.field)` loops forever the moment
+  `response.field` is itself undefined — which is exactly what a test stub that
+  answers every URL with the same body will hand you. Wrap it: `setX({ field })`.
+- Key it on the value from the *response*, not from the input that triggered the
+  request. A poll keeps the previous answer on screen until the next lands, so
+  the input has already changed while the data has not.
 
 **Parsing in tests.** A `RequestInit` body is `BodyInit | null`, so
 `String(body)` risks `[object Object]`. Assert `typeof body === 'string'` first,
@@ -236,7 +261,11 @@ answer to that conflict is to need neither.
 | `npm run typecheck` | `tsc --noEmit`, all packages |
 | `npm run build` | Production web build |
 | `npm run db:migrate` | Apply migrations without starting the server |
+| `npm run db:reset` | Delete the database and reseed from scratch |
 | **`npm run verify`** | **The gate. All of the above.** |
+
+`MARKET_SIMULATION=off` runs on seeded data alone; `MARKET_SIMULATION_INTERVAL_MS`
+changes the pace. Both are documented in `.env.example`.
 
 Requires **Node >= 22.5** (`node:sqlite`). Ports: API 4000, web 5173, `/api`
 proxied so there is no CORS to maintain.
@@ -268,17 +297,26 @@ proxied so there is no CORS to maintain.
 | 5 | Watchlist + instrument snapshots | ✅ done |
 | 6 | Replay / demo mode | ✅ done |
 | 7 | Demo polish, reviewer journey, responsive pass | ✅ done |
+| 8 | Front-end pass: grouped stories, story path, threshold disclosure | ✅ done |
+| 9 | A market that keeps moving: simulator, polling, 12 instruments | ✅ done |
 
 ### The project is feature-complete
 
 Every part of the brief is answered: create and manage a watchlist, see the
-latest market information, return later and find out what changed. All seven
-phases are done, including the responsive pass.
+latest market information, return later and find out what changed. All phases
+are done, including the responsive pass and the live pass.
 
-**Do not add features.** Live ingestion, multiple watchlists, auth,
-notifications, WebSockets and portfolio holdings are each defensible and none
-makes the submission better than a clear demo of what already works. Each also
-adds a new way for the demo to fail.
+**Do not add features.** Multiple watchlists, auth, notifications, WebSockets and
+portfolio holdings are each defensible and none makes the submission better than
+a clear demo of what already works. Each also adds a new way for the demo to
+fail.
+
+**On the simulator specifically.** Phase 9 added generated prices, at the user's
+explicit request and against the earlier decision recorded in CUT_LIST.md. It is
+a *generator*, not ingestion: it invents prices and hands them to the ordinary
+significance engine. It must never grow into an ingestion pipeline (dedupe,
+out-of-order handling, backpressure, provider health) without that being asked
+for as its own phase.
 
 If more work is wanted, it belongs in one of these:
 
@@ -324,6 +362,65 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 9: a market that keeps moving
+
+Requested explicitly, and it reverses a decision on the cut list. Live data was
+cut in Phase 1 and the user asked for it back; the honest version of "real time"
+was built rather than the literal one.
+
+- **`modules/market/simulator.ts`** invents a price per instrument on a timer
+  and hands it to `observeTick`. That is the whole design argument: a generated
+  price gets **no privileged path into history**. It produces an event only by
+  crossing the published threshold, and the same "Why is this significant?"
+  panel explains it.
+- **What it is not given** is the point. Events and snapshots, no
+  `WatermarkStore` — so a running market cannot consume anyone's unread events
+  (I4), structurally rather than by policy.
+- **`createApp` builds it; only `index.ts` starts it.** A factory, not a flag,
+  so that constructing an app — which every test does — can never spawn a
+  background interval.
+- **`GET/POST /api/market-status`** reports the source and pauses/resumes. The
+  pause is what makes a moving market safe to demo: stop it to narrate, start it
+  to watch events land.
+- **12 instruments, 18 seeded events**, from `modules/market/catalogue.ts` —
+  one file describing the fictional market, so the seed and the simulator cannot
+  drift apart. Two round trips, a genuine rally, a five-crossing volatile one, a
+  staged slide that shows the anchor limitation, and three deliberately calm
+  instruments.
+- **A second seeded reader, `priya`**, with her watermark two thirds along, so
+  "two people see different things" is demonstrable in the running app.
+- **Polling, not sockets** (`usePoll`): 2s header, 4s watchlist, 8s feed. The
+  feed is slowest on purpose — re-ordering stories under someone mid-sentence is
+  worse than being a few seconds behind.
+
+Four things were only found by looking at it, and three of them were real bugs:
+
+1. **The volatility parameter was a lie.** A uniform draw over [-w, w] has a
+   standard deviation of w/sqrt(3), so every instrument was 42% calmer than its
+   profile claimed and the market produced almost nothing. Fixed by scaling, so
+   `volatility` now means standard deviation. **Tune by measuring, not by feel** —
+   a throwaway script that runs 1200 steps and prints events-per-hour and drift
+   settled this in one pass.
+2. **Mean reversion pointed at the wrong price.** Reverting toward each
+   instrument's *opening* price rallied INFY 25% in the first minutes and quietly
+   destroyed its one job — being the instrument that genuinely fell. It reverts
+   to where each seeded story *ended*.
+3. **"Recovered" became a lie.** Every advance said it. That was fine when
+   RELIANCE was the only instrument with one and wrong the moment the catalogue
+   had a genuine rally: TATAMOTORS never fell. `moveLabel` derives it from the
+   story — an advance is a *recovery* only if a decline precedes it in the same
+   instrument's events, otherwise it *rose*. This is the "never claim more than
+   the data model knows" rule, caught by a screenshot rather than a test.
+4. **"— you were not watching" twenty times** was filler at this volume. Gone.
+
+A test also caught a genuine robustness bug: `observeTick` throws on an
+out-of-order tick, and that throw was inside a `setInterval`, so a clock stepping
+backwards would take the generator down. It now skips that instrument for that
+step rather than inventing a timestamp to get past the check.
+
+Gate: `npm run verify` green — 208 tests, 21 files. No overflow at 390, 768 or
+900px. Verified live over CDP, not only in tests.
 
 ### 2026-09-04 — Phase 8: front-end pass (UI only)
 

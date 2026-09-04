@@ -46,6 +46,30 @@ function groupIntoStories(events: readonly FeedEvent[]): readonly InstrumentStor
 }
 
 /**
+ * "Recovered" is a claim about what came before, so only say it when the story
+ * says so.
+ *
+ * A single event knows its direction and nothing else. Calling every advance a
+ * recovery was fine while RELIANCE was the only instrument with one, and became
+ * wrong the moment the demo included a genuine rally: TATAMOTORS never fell, and
+ * three rows in a row told the reader it had come back from something.
+ *
+ * Inside a story the events are chronological, so "was there a decline before
+ * this one" is a question the grouped list can actually answer. When there was,
+ * the word is earned; when there was not, the plain one is the true one.
+ */
+export function moveLabel(
+  events: readonly FeedEvent[],
+  index: number,
+): 'Fell' | 'Rose' | 'Recovered' {
+  const event = events[index];
+  if (event === undefined || event.direction === 'decline') return 'Fell';
+  return events.slice(0, index).some((earlier) => earlier.direction === 'decline')
+    ? 'Recovered'
+    : 'Rose';
+}
+
+/**
  * Why the system judged this worth surfacing.
  *
  * The brief left "what counts as meaningful" to us, so the threshold should not
@@ -110,22 +134,21 @@ export function AttentionFeed({ feed }: { feed: AttentionFeedResponse }) {
           </header>
 
           <ol className="story-events">
-            {story.events.map((event) => (
+            {story.events.map((event, index) => (
               <li key={event.eventId} className={`story-event ${event.direction}`}>
                 <div className="arrow" aria-hidden="true">
                   {event.direction === 'decline' ? '↓' : '↑'}
                 </div>
                 <div className="story-event-body">
                   <p className="headline">
-                    {event.direction === 'decline' ? 'Fell' : 'Recovered'}{' '}
-                    {formatPercent(event.magnitudeBps, false)}
+                    {moveLabel(story.events, index)} {formatPercent(event.magnitudeBps, false)}
                   </p>
                   <div className="prices">
                     {formatPrice(event.fromPrice)} → {formatPrice(event.toPrice)}
                   </div>
-                  <div className="meta">
-                    {formatTime(event.occurredAt)} — you were not watching.
-                  </div>
+                  {/* Just the time. "You were not watching" was true and, said
+                      once per event, became twenty lines of the same sentence. */}
+                  <div className="meta">{formatTime(event.occurredAt)}</div>
                   <WhySignificant event={event} />
                 </div>
               </li>

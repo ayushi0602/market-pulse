@@ -50,21 +50,47 @@ and that is the point.
 
 | | Answers | Example |
 | --- | --- | --- |
-| **Watchlist** | What do I care about? | RELIANCE, INFY, TCS |
+| **Watchlist** | What do I care about? | 12 instruments, RELIANCE to ITC |
 | **Snapshots** | What do we currently know? | RELIANCE, as recorded at 2:15 PM |
 | **Event log** | What meaningfully happened? | RELIANCE fell 9%, then recovered |
-| **Attention feed** | What changed since *I* last checked? | RELIANCE, INFY — not TCS |
+| **Attention feed** | What changed since *I* last checked? | 9 instruments — not TCS |
 | **Replay** | What happened along the way? | ₹2,900 → ₹2,639 → ₹2,900 |
 
 TCS sits on the watchlist and appears nowhere in the feed. It never crossed the
 significance threshold, so there is nothing to report — and it still belongs on
 the list, because a watchlist is what you care about, not only what changed.
 
+## The market keeps moving
+
+Prices update every three seconds while the app is open, and new events appear
+as they cross the threshold.
+
+**The prices are generated, not real.** There is no market data feed here. A
+simulator invents a price for each instrument on a timer and hands every one of
+them to the *same* significance engine the seed and the tests use — so a
+generated event is an ordinary event, with the same anchor, the same threshold,
+and the same "Why is this significant?" explanation behind it. Inventing prices
+is not a second way into history.
+
+The header says so in the server's own words: **Simulated market — new
+observations every 3s**. The word *live* appears nowhere in the interface, and a
+test asserts it stays out. When the generator is off, the same strip reads
+**Static data** and nothing on the page claims to be updating.
+
+**Pause it.** The header has a pause control, so the market can be stopped while
+you read a screen and started again to watch events arrive. It stops a timer;
+everything already recorded stays exactly as it is.
+
+Three of the twelve instruments — TCS, WIPRO and ITC — are calibrated so calmly
+that they never cross the threshold. That is deliberate: the demo needs quiet
+instruments to stay quiet, and a test runs two thousand simulated steps to prove
+they do.
+
 ## Try it
 
 ```bash
 npm install
-npm run db:seed     # three instruments, three different stories
+npm run db:seed     # 12 instruments, 18 events, two readers
 npm run dev
 ```
 
@@ -73,16 +99,20 @@ Open **http://localhost:5173**. Requires **Node.js ≥ 22.5** (for the built-in
 
 ### A 60-second walkthrough
 
-**1 — Start on *My watchlist*.** Three instruments. Note **TCS**: a recorded
-price, and *"No meaningful changes"*. It is quiet, and it is still here.
+**1 — Start on *My watchlist*.** Twelve instruments, split into **Needs your
+attention (9)** and **Quiet (3)**. Watch a price flash as it changes. Note
+**TCS** in the quiet group: a recorded price, and *"No meaningful changes"*. It
+is quiet, and it is still here.
 
 **2 — Note RELIANCE:** *"2 meaningful changes — but the price came back."* Click
 **View what happened →**.
 
 **3 — *While you were away*** groups what crossed the threshold by instrument.
-Instruments are ordered by their largest move — INFY's genuine 20% fall leads —
-and each instrument's own events run in the order they happened. Open **Why is
-this significant?** on any of them to see the anchor, the move and the threshold
+Instruments are ordered by their largest move — INFY's genuine 20% fall leads at
+seed time — and each instrument's own events run in the order they happened.
+Compare **TATAMOTORS**, which only ever *rose*, with **RELIANCE**, which
+*recovered*: the wording is derived from the story, never assumed. Open **Why is
+this significant?** on any event to see the anchor, the move and the threshold
 that fired.
 
 **4 — Toggle to *Traditional watchlist*.** Same data, same moment:
@@ -93,10 +123,16 @@ RELIANCE   ₹2,900.00   0.00%   No change since your last check
 
 Toggle back. **The price went nowhere. The story did not.**
 
-**5 — Open *Replay*.** Step through it. The shape fills in as you go and the
-snapshot number moves — 0.00%, then −9.00%, then back to 0.00% — while the
-revealed events stay on screen. Watching changes nothing: not the events, and not
-your read position.
+**5 — Open *Replay*.** Pick a story from the dropdown — it lists only
+instruments that have one, ordered by their biggest move. Step through RELIANCE.
+The shape fills in as you go and the snapshot number moves — 0.00%, then −9.00%,
+then back to 0.00% — while the revealed events stay on screen. Watching changes
+nothing: not the events, and not your read position.
+
+**6 — Switch users.** In the *Viewing as* box, change `demo` to `priya`. Same
+log, same instant, a different answer: `priya` was seeded having already read
+two thirds of history, so her feed is shorter. Change it back. Nothing either of
+them does moves the other's position.
 
 ## Key engineering decisions
 
@@ -143,9 +179,16 @@ Stated plainly, because they affect what the system can honestly claim.
 - **A staged move is reported in pieces.** Emission re-anchors, so 2900 → 2726 →
   2639 reports a 6% decline and not the 9% that actually happened. A settle
   window would fix it; it is deferred until the feed shows whether it matters.
-- **There is no live market data.** Prices come from a seed script. Every price
-  is labelled *"as recorded"* and never *"live"*, and a test asserts those words
-  stay out of the UI.
+- **There is no live market data.** Prices come from a seed script and then a
+  simulator: a mean-reverting random walk with a per-instrument volatility, which
+  is not a model of anything. Every price is labelled *"as recorded"* and never
+  *"live"*, the header says *simulated*, and tests assert those words stay out.
+- **The simulator is not ingestion.** It runs in-process on a timer and writes
+  directly to the stores. Duplicate ticks, out-of-order arrival across a network,
+  backpressure and provider disconnects are all still undecided — see below.
+- **Freshness is polled, not pushed.** The client re-reads on a timer (2s for the
+  header, 4s for the watchlist, 8s for the feed). A socket would cut latency
+  nobody is measuring in exchange for a connection lifecycle to maintain.
 - **Quiet instruments show no percentage.** There is no baseline to compute a
   day-change from, so none is shown. The alternative was inventing a number.
 - **Significance is one threshold (5%).** Not calibrated against real market
@@ -171,6 +214,12 @@ named block:
 - **Read positions are independent** between users and never move backwards.
 - **Reading does not acknowledge**, verified on both the server and the client.
 - **The engine is deterministic and pure** — same ticks in, same events out.
+- **A running market cannot consume your unread events.** The simulator is handed
+  the event and snapshot stores and no watermark store, so there is no call it
+  could make; a test runs two thousand steps and asserts the read position has
+  not moved.
+- **The simulation is reproducible** — seeded PRNG, so the same seed writes the
+  same history twice, and a failure can be replayed.
 
 These are checked by mutation: the threshold comparison, the anchor,
 re-anchoring, log freezing, `MAX` in the watermark upsert and more were each
@@ -188,6 +237,7 @@ npm run verify   # format + lint + typecheck + test + build
 | `npm run dev` | API (:4000) and web client (:5173) together |
 | `npm run db:seed` | Build the demo data |
 | `npm run db:reset` | Delete the local database and reseed |
+| `MARKET_SIMULATION=off npm run dev` | Run on seeded data alone, nothing generating |
 | `npm test` | Every suite |
 | `npm run verify` | The full quality gate |
 

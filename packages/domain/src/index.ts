@@ -2,12 +2,14 @@ export type { Clock, Timestamp } from './clock.js';
 export { fixedClock, systemClock } from './clock.js';
 
 export type { HealthResponse, ServiceStatus } from './contracts/system.js';
+export type { MarketSource, MarketStatusResponse } from './contracts/market.js';
 export type {
   AcknowledgeRequest,
   AcknowledgeResponse,
   AttentionFeedResponse,
   FeedEvent,
   FeedInstrumentSummary,
+  ReplayCatalogueResponse,
   ReplayResponse,
   WatchlistResponse,
   WatchlistRowView,

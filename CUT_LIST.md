@@ -86,6 +86,34 @@ authentication provider, no monorepo build orchestrator (Nx/Turborepo).
 Each of these solves a real problem that we do not yet have. They get added when
 the pain is concrete, one at a time.
 
+### WebSockets / server-sent events
+The client polls: 2s for the market header, 4s for the watchlist, 8s for the
+feed. A push channel would cut latency nobody is measuring, in exchange for a
+connection lifecycle, a reconnect policy, and a second delivery path for data the
+polling path already returns correctly.
+**Revisit when:** there is a real ingestion pipeline whose rate makes polling
+wasteful, or a screen where seconds of staleness is a defect rather than a
+detail.
+
+## Reopened
+
+### Live-updating prices — reopened as a *simulator*, 2026-09-04
+
+Asked for directly, so it was built. What was built is deliberately narrower
+than "live market data":
+
+- It is a **price generator**, not ingestion. It invents prices in-process on a
+  timer and writes through the ordinary stores.
+- Every generated price goes through the **same** `observeTick` as the seed and
+  the tests. Generated data gets no privileged path into history.
+- Nothing claims it is real. The API reports `source: "simulated"`, the UI
+  repeats that word, and tests assert *live* stays out of the interface.
+
+**Still cut:** a real ingestion pipeline. Duplicate ticks, out-of-order arrival
+across a network, backpressure, staleness detection and provider health are all
+undecided, and they are a phase of their own rather than something to grow the
+simulator into.
+
 ## The rule
 
 > Add complexity in response to an observed problem, never in anticipation of

@@ -34,10 +34,24 @@ const goldenTimeline: ReplayResponse = {
   ],
 };
 
+/**
+ * The picker asks which instruments have a story before the timeline loads.
+ * These tests are about the timeline, so it gets a fixed one-entry answer and
+ * the component is told which instrument to open on.
+ */
 function stubFetch(response: ReplayResponse) {
-  const spy = vi.fn((_url: string, _init?: RequestInit) =>
+  const catalogue = {
+    instruments: [
+      {
+        instrumentId: response.instrumentId,
+        events: response.timeline.length,
+        largestMoveBps: 989,
+      },
+    ],
+  };
+  const spy = vi.fn((url: string, _init?: RequestInit) =>
     Promise.resolve(
-      new Response(JSON.stringify(response), {
+      new Response(JSON.stringify(url.includes('replay/instruments') ? catalogue : response), {
         status: 200,
         headers: { 'content-type': 'application/json' },
       }),
@@ -132,7 +146,9 @@ describe('R5 at the client boundary: watching acknowledges nothing', () => {
     const spy = await renderReplay();
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-    expect(spy).toHaveBeenCalledTimes(1);
+    // The picker's one-off catalogue read is not a timeline read.
+    const timeline = spy.mock.calls.filter(([url]) => !url.includes('replay/instruments'));
+    expect(timeline).toHaveLength(1);
   });
 });
 

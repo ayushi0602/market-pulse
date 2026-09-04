@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import type { FeedEvent, RecordedMarketEvent } from '@market-pulse/domain';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FeedEvent, RecordedMarketEvent, ReplayCatalogueResponse } from '@market-pulse/domain';
 import {
   advance,
   createReplay,
@@ -12,8 +12,10 @@ import {
   priceAtCursor,
   revealed,
 } from '@market-pulse/domain';
-import { fetchReplay } from './api.js';
+import { moveLabel } from './AttentionFeed.jsx';
+import { fetchReplay, fetchReplayInstruments } from './api.js';
 import { StoryPath } from './StoryPath.jsx';
+import { usePoll } from './usePoll.js';
 import { formatPercent, formatPrice, formatTime, pluralise } from './format.js';
 
 /** The wire shape back into the domain shape the replay projection works on. */
@@ -47,9 +49,46 @@ function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
 }
 
 export interface ReplayViewProps {
-  instrumentId: string;
+  /** Which instrument to open on. Omitted, the picker leads with the biggest story. */
+  instrumentId?: string;
   /** Milliseconds between auto-advanced steps. A parameter so tests can drive it. */
   stepIntervalMs?: number;
+}
+
+/**
+ * Chooses which story to step through.
+ *
+ * Its options come from the log, not from anyone's watchlist. A picker built
+ * from one user's list would quietly make replay per-user, and replay is a
+ * projection of shared history -- the request it issues cannot name a user, and
+ * this must not be the thing that reintroduces one.
+ *
+ * Only instruments with recorded events appear, because a replay of nothing is
+ * not something to offer. That is also why the quiet instruments are absent
+ * here and present on the watchlist: the two lists answer different questions.
+ */
+function InstrumentPicker({
+  catalogue,
+  selected,
+  onSelect,
+}: {
+  catalogue: ReplayCatalogueResponse;
+  selected: string;
+  onSelect: (instrumentId: string) => void;
+}) {
+  return (
+    <label className="picker">
+      <span className="muted">Replaying</span>
+      <select value={selected} onChange={(event) => onSelect(event.target.value)}>
+        {catalogue.instruments.map((entry) => (
+          <option key={entry.instrumentId} value={entry.instrumentId}>
+            {entry.instrumentId} — {pluralise(entry.events, 'change')}, biggest{' '}
+            {formatPercent(entry.largestMoveBps, false)}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 /**
@@ -63,13 +102,28 @@ export interface ReplayViewProps {
  * copy of canonical history, so nothing this component does can alter what
  * happened or what any user has read.
  */
-export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: ReplayViewProps) {
+export function ReplayView({ instrumentId: initial, stepIntervalMs = 1400 }: ReplayViewProps) {
   const [timeline, setTimeline] = useState<readonly FeedEvent[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [chosen, setChosen] = useState<string | undefined>(initial);
+
+  /**
+   * The catalogue is read once, not polled.
+   *
+   * A running market adds events, and re-sorting the picker under someone's
+   * cursor mid-replay would be a genuinely hostile thing to do. The timeline
+   * being replayed is a frozen copy either way.
+   */
+  const loadCatalogue = useCallback((signal: AbortSignal) => fetchReplayInstruments(signal), []);
+  const { data: catalogue } = usePoll<ReplayCatalogueResponse>(loadCatalogue, 0);
+
+  // Default to the biggest story, which is the order the endpoint returns.
+  const symbol = chosen ?? catalogue?.instruments[0]?.instrumentId;
 
   useEffect(() => {
+    if (symbol === undefined) return;
     const controller = new AbortController();
     fetchReplay(symbol, controller.signal)
       .then((response) => setTimeline(response.timeline))
@@ -107,17 +161,34 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
     return () => clearTimeout(timer);
   }, [activelyPlaying, cursor, stepIntervalMs]);
 
+  const picker =
+    catalogue === undefined || symbol === undefined || catalogue.instruments.length === 0 ? null : (
+      <InstrumentPicker
+        catalogue={catalogue}
+        selected={symbol}
+        onSelect={(next) => {
+          setChosen(next);
+          setTimeline(undefined);
+          setCursor(0);
+          setPlaying(false);
+        }}
+      />
+    );
+
   if (error !== undefined) {
     return <p className="muted">Could not load the replay — {error}</p>;
   }
-  if (timeline === undefined) {
+  if (symbol === undefined || timeline === undefined) {
     return <p className="muted">Loading the story…</p>;
   }
   if (timeline.length === 0) {
     return (
-      <div className="card empty">
-        <p>{symbol} never crossed the significance threshold.</p>
-        <p className="muted">There is no story to replay, which is itself the answer.</p>
+      <div>
+        {picker}
+        <div className="card empty">
+          <p>{symbol} never crossed the significance threshold.</p>
+          <p className="muted">There is no story to replay, which is itself the answer.</p>
+        </div>
       </div>
     );
   }
@@ -129,6 +200,8 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
 
   return (
     <div>
+      {picker}
+
       <div className="card">
         <div className="row">
           <div>
@@ -165,7 +238,7 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
       )}
 
       <ol className="timeline">
-        {shown.map((record) => (
+        {shown.map((record, index) => (
           <li key={record.eventId} className={`card event ${record.event.direction}`}>
             <div className="arrow" aria-hidden="true">
               {record.event.direction === 'decline' ? '↓' : '↑'}
@@ -173,7 +246,13 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
             <div>
               <div className="muted">{formatTime(record.event.occurredAt)}</div>
               <p className="headline">
-                {record.event.direction === 'decline' ? 'Fell' : 'Recovered'}{' '}
+                {/* The revealed events are this instrument's own history in
+                    order, so the same "was there a fall before this" question
+                    the feed asks is answerable here too. */}
+                {moveLabel(
+                  shown.map((r) => toFeedEvent(r)),
+                  index,
+                )}{' '}
                 {formatPercent(record.event.magnitudeBps, false)}
               </p>
               <div className="prices">

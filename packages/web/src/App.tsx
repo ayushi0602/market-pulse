@@ -1,50 +1,55 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { acknowledge, fetchFeed } from './api.js';
 import { AttentionFeed, TraditionalWatchlist } from './AttentionFeed.jsx';
+import { MarketStatus } from './MarketStatus.jsx';
 import { ReplayView } from './Replay.jsx';
 import { Watchlist } from './Watchlist.jsx';
+import { usePoll } from './usePoll.js';
 import { pluralise } from './format.js';
 
 type View = 'pulse' | 'traditional';
 type Tab = 'watchlist' | 'attention' | 'replay';
 
-type State =
-  | { status: 'loading' }
-  | { status: 'ready'; feed: AttentionFeedResponse }
-  | { status: 'error'; message: string };
+/**
+ * Slower than the watchlist re-reads.
+ *
+ * The feed is something a person is reading, not a number they are watching.
+ * Re-ordering a list of stories under someone mid-sentence is worse than being
+ * a few seconds behind, and the banner tells them what arrived either way.
+ */
+const FEED_POLL_MS = 8000;
 
 export function App() {
   const [user, setUser] = useState('demo');
   const [view, setView] = useState<View>('pulse');
   const [tab, setTab] = useState<Tab>('watchlist');
-  const [state, setState] = useState<State>({ status: 'loading' });
   const [acknowledging, setAcknowledging] = useState(false);
+  const [actionError, setActionError] = useState<string | undefined>(undefined);
+
+  const load = useCallback((signal: AbortSignal) => fetchFeed(user, signal), [user]);
+  const { data: feed, error, refresh } = usePoll<AttentionFeedResponse>(load, FEED_POLL_MS);
 
   /**
-   * Fetches and stores the feed. Deliberately does not set the loading state
-   * itself: doing that synchronously inside an effect causes a cascading render,
-   * and the previous feed staying on screen while the next one loads is better
-   * behaviour anyway. Callers that want a spinner set it themselves, from an
-   * event handler.
+   * The log head when this feed was first shown, so the page can say what
+   * arrived while it was open rather than only showing a different list than
+   * the one the reader started with.
+   *
+   * Reset when the user changes: a different reader is a different question.
    */
-  const load = useCallback((userId: string, signal?: AbortSignal) => {
-    fetchFeed(userId, signal)
-      .then((feed) => setState({ status: 'ready', feed }))
-      .catch((error: unknown) => {
-        if (signal?.aborted) return;
-        setState({
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-      });
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    load(user, controller.signal);
-    return () => controller.abort();
-  }, [user, load]);
+  const [openedAt, setOpenedAt] = useState<{ user: string; sequence: number } | undefined>(
+    undefined,
+  );
+  if (feed !== undefined && openedAt?.user !== feed.userId) {
+    // Keyed on the *response's* user, not the input box. A poll keeps the
+    // previous reader's feed on screen until the new one lands, so keying on
+    // the box would take the baseline from the wrong person's numbers.
+    setOpenedAt({ user: feed.userId, sequence: feed.throughSequence });
+  }
+  const arrived =
+    feed === undefined || openedAt?.user !== feed.userId
+      ? 0
+      : feed.throughSequence - openedAt.sequence;
 
   /**
    * Acknowledging is an explicit action, never a side effect of rendering.
@@ -55,17 +60,15 @@ export function App() {
    * for them.
    */
   const onAcknowledge = () => {
-    if (state.status !== 'ready') return;
+    if (feed === undefined) return;
     setAcknowledging(true);
-    acknowledge(user, state.feed.throughSequence)
+    acknowledge(user, feed.throughSequence)
       .then(() => {
-        load(user);
+        setActionError(undefined);
+        refresh();
       })
-      .catch((error: unknown) => {
-        setState({
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
+      .catch((cause: unknown) => {
+        setActionError(cause instanceof Error ? cause.message : 'Unknown error');
       })
       .finally(() => setAcknowledging(false));
   };
@@ -73,6 +76,7 @@ export function App() {
   return (
     <main className="shell">
       <p className="eyebrow">Market Pulse</p>
+      <MarketStatus />
 
       <div className="tabs" role="tablist">
         <button
@@ -115,41 +119,46 @@ export function App() {
             The same history, stepped through in the order it was recorded. Watching it changes
             nothing — not the events, and not your read position.
           </p>
-          <ReplayView instrumentId="RELIANCE" />
+          <ReplayView />
         </>
       )}
 
-      {tab === 'attention' && state.status === 'loading' && (
+      {tab === 'attention' && feed === undefined && error === undefined && (
         <p className="muted">Checking what you missed…</p>
       )}
 
-      {tab === 'attention' && state.status === 'error' && (
+      {tab === 'attention' && feed === undefined && error !== undefined && (
         <>
           <h1>Something went wrong</h1>
-          <p className="subtitle">{state.message}</p>
+          <p className="subtitle">{error}</p>
           <p className="muted">
             Is the API running? Try <code>npm run dev</code>, then <code>npm run db:seed</code>.
           </p>
         </>
       )}
 
-      {tab === 'attention' && state.status === 'ready' && (
+      {tab === 'attention' && feed !== undefined && (
         <>
           <h1>
-            {state.feed.summary.meaningfulChanges === 0
-              ? 'You are all caught up'
-              : 'While you were away'}
+            {feed.summary.meaningfulChanges === 0 ? 'You are all caught up' : 'While you were away'}
           </h1>
           <p className="subtitle">
-            {state.feed.summary.meaningfulChanges === 0
+            {feed.summary.meaningfulChanges === 0
               ? 'Nothing has crossed the significance threshold since you last checked.'
-              : `${pluralise(state.feed.summary.meaningfulChanges, 'meaningful change')} across ${pluralise(
-                  state.feed.summary.instruments.length,
+              : `${pluralise(feed.summary.meaningfulChanges, 'meaningful change')} across ${pluralise(
+                  feed.summary.instruments.length,
                   'instrument',
                 )}.`}
           </p>
 
-          {state.feed.events.length > 0 && (
+          {arrived > 0 && (
+            <p className="arrived" role="status">
+              {pluralise(arrived, 'change')} arrived while this page was open. The market kept
+              moving; your read position did not.
+            </p>
+          )}
+
+          {feed.events.length > 0 && (
             <>
               <div className="toggle" role="group" aria-label="Comparison">
                 <button
@@ -169,24 +178,24 @@ export function App() {
               </div>
 
               {view === 'pulse' ? (
-                <AttentionFeed feed={state.feed} />
+                <AttentionFeed feed={feed} />
               ) : (
-                <TraditionalWatchlist feed={state.feed} />
+                <TraditionalWatchlist feed={feed} />
               )}
             </>
           )}
 
-          {state.feed.events.length === 0 && (
+          {feed.events.length === 0 && (
             <div className="card empty">
               <div className="tick" aria-hidden="true">
                 ✓
               </div>
               <p>
-                Read position {state.feed.sinceSequence} of {state.feed.throughSequence}.
+                Read position {feed.sinceSequence} of {feed.throughSequence}.
               </p>
               <p className="muted">
                 Try another user below — the log is shared, but each person&rsquo;s position in it
-                is their own.
+                is their own. <code>priya</code> was seeded partway through it.
               </p>
             </div>
           )}
@@ -196,7 +205,7 @@ export function App() {
               type="button"
               className="primary"
               onClick={onAcknowledge}
-              disabled={acknowledging || state.feed.events.length === 0}
+              disabled={acknowledging || feed.events.length === 0}
             >
               {acknowledging ? 'Marking…' : 'Mark all as read'}
             </button>
@@ -205,14 +214,17 @@ export function App() {
               <input
                 type="text"
                 value={user}
-                onChange={(e) => {
-                  setState({ status: 'loading' });
-                  setUser(e.target.value.trim() || 'demo');
-                }}
+                onChange={(e) => setUser(e.target.value.trim() || 'demo')}
                 aria-label="User id"
               />
             </label>
           </div>
+
+          {actionError !== undefined && (
+            <p className="muted">
+              Nothing was marked as read — {actionError}. Your position is unchanged.
+            </p>
+          )}
         </>
       )}
     </main>
