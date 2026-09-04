@@ -64,3 +64,16 @@ export interface AcknowledgeResponse {
   /** Where the watermark actually ended up. Never lower than it was. */
   readonly lastSeenSequence: number;
 }
+
+/**
+ * The replay timeline for one instrument.
+ *
+ * Deliberately carries no user: replay is a projection of shared history, and a
+ * request that cannot name a user cannot advance one's read position (R5). That
+ * is a structural guarantee, not a rule someone has to remember.
+ */
+export interface ReplayResponse {
+  readonly instrumentId: string;
+  /** Ordered by sequence. Every recorded event, regardless of who has read it. */
+  readonly timeline: readonly FeedEvent[];
+}

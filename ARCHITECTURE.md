@@ -286,6 +286,54 @@ latest price *the log knows about*, not the live market price — no tick since
 the last threshold crossing is recorded. Labels must say "as recorded", never
 "current".
 
+## Replay
+
+Replay is a **projection of history, never a rewrite of it**.
+
+```
+canonical event log  ──read──▶  frozen timeline  ──cursor──▶  what is on screen
+```
+
+`GET /api/replay?instrumentId=…` returns one instrument's whole story in
+sequence order. The cursor lives in the client; the server holds no replay
+session, because a per-viewer server-side cursor would be exactly the mutable,
+user-scoped state replay is supposed not to have.
+
+### Replay invariants
+
+| # | Invariant | How it holds |
+| --- | --- | --- |
+| **R1** | Canonical history is immutable | The route takes an `EventStore` that has no update or delete; the projection freezes its own timeline |
+| **R2** | Replay is deterministic | Visible state is a pure function of `(timeline, cursor)` |
+| **R3** | Replay order is sequence order | `createReplay` sorts by `sequence`, explicitly not `occurredAt` |
+| **R4** | Time is injectable | See below |
+| **R5** | Replay does not change consumption state | The route takes no `WatermarkStore`, and the request cannot name a user |
+
+R1 and R5 are **structural**, not remembered: the replay module has no way to
+address canonical history or a watermark, so it cannot alter either. The
+strongest evidence for R5 is that it could not be broken by editing the route —
+violating it required adding watermark access at the app-wiring level, and the
+tests caught that immediately.
+
+### On R4, honestly
+
+There is no `Clock` in the replay projection, and that is the answer rather than
+an oversight. Replay is **cursor-based**: a step reveals the next event, and what
+is visible is a pure function of the timeline and the cursor. No wall-clock
+reading exists to inject, so threading a `Clock` through would be ceremony — an
+abstraction with nothing on the other side, which is what §2.3 exists to prevent.
+
+Real time appears in exactly one place: how fast the UI auto-advances. That is a
+presentation concern, and the component takes `stepIntervalMs` as a parameter so
+tests drive the whole story in milliseconds without waiting.
+
+### What replay is for
+
+The demo. Stepping through the golden scenario shows the snapshot number moving
+— 0.00%, then −9.00%, then back to 0.00% — while the revealed events do not go
+away. The closing line is the product thesis in one sentence: *the price went
+nowhere; the story did not.*
+
 ## Explicitly deferred
 
 Deferred means *"we have a place to put it, and we are not building it now."*

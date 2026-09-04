@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { acknowledge, fetchFeed } from './api.js';
 import { AttentionFeed, TraditionalWatchlist } from './AttentionFeed.jsx';
+import { ReplayView } from './Replay.jsx';
 import { pluralise } from './format.js';
 
 type View = 'pulse' | 'traditional';
+type Tab = 'attention' | 'replay';
 
 type State =
   | { status: 'loading' }
@@ -14,6 +16,7 @@ type State =
 export function App() {
   const [user, setUser] = useState('demo');
   const [view, setView] = useState<View>('pulse');
+  const [tab, setTab] = useState<Tab>('attention');
   const [state, setState] = useState<State>({ status: 'loading' });
   const [acknowledging, setAcknowledging] = useState(false);
 
@@ -70,9 +73,41 @@ export function App() {
     <main className="shell">
       <p className="eyebrow">Market Pulse</p>
 
-      {state.status === 'loading' && <p className="muted">Checking what you missed…</p>}
+      <div className="tabs" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'attention'}
+          onClick={() => setTab('attention')}
+        >
+          While you were away
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'replay'}
+          onClick={() => setTab('replay')}
+        >
+          Replay
+        </button>
+      </div>
 
-      {state.status === 'error' && (
+      {tab === 'replay' && (
+        <>
+          <h1>What actually happened</h1>
+          <p className="subtitle">
+            The same history, stepped through in the order it was recorded. Watching it changes
+            nothing — not the events, and not your read position.
+          </p>
+          <ReplayView instrumentId="RELIANCE" />
+        </>
+      )}
+
+      {tab === 'attention' && state.status === 'loading' && (
+        <p className="muted">Checking what you missed…</p>
+      )}
+
+      {tab === 'attention' && state.status === 'error' && (
         <>
           <h1>Something went wrong</h1>
           <p className="subtitle">{state.message}</p>
@@ -82,7 +117,7 @@ export function App() {
         </>
       )}
 
-      {state.status === 'ready' && (
+      {tab === 'attention' && state.status === 'ready' && (
         <>
           <h1>
             {state.feed.summary.meaningfulChanges === 0

@@ -65,6 +65,11 @@ Then open http://localhost:5173 and toggle between **Traditional watchlist** and
 view reports 0.00%, and the feed reports the 9% fall and the 9.89% recovery that
 happened in between.
 
+The **Replay** tab steps through the same history one event at a time. The
+snapshot number moves — 0.00%, then −9.00%, then back to 0.00% — while the
+revealed events stay on screen. Watching it changes nothing: not the events, and
+not your read position.
+
 Verify it is up:
 
 ```bash

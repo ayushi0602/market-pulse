@@ -235,27 +235,34 @@ proxied so there is no CORS to maintain.
 | 2 | Domain model + golden scenario | ✅ done |
 | 3 | Persistence for the event log and watermarks | ✅ done |
 | 4 | Attention feed API + "Since you last checked" | ✅ done |
-| 5 | Live tick ingestion | ⬜ |
-| 6 | **Replay / demo mode** | ⏳ next |
+| 5 | **Watchlist context, or simulated ingestion** | ⏳ next |
+| 6 | Replay / demo mode | ✅ done |
 
-### Phase 5/6 scope (next)
+### Next phase scope
 
-Two candidates, in the order that adds the most to the submission:
+The engineering is done; what remains is making the product legible to someone
+seeing it for the first time. Two candidates:
 
-**Replay / demo mode** — drive the golden scenario through the live system on a
-timer so the story can be watched rather than described: the price falls, the
-feed fills, the price recovers, the traditional view returns to 0.00%. This is
-the strongest demo asset and reuses the `Clock` port that has been waiting for it
-since Phase 1.
+**Watchlist context.** The feed answers "what deserves attention". It cannot
+answer "what am I watching" — an instrument that never crosses the threshold
+(TCS in the seed) appears nowhere, which is *correct for a feed and wrong for a
+watchlist*. That distinction is worth making explicit:
 
-**Live tick ingestion** — an endpoint or poller that feeds real ticks through
-`observeTick` and appends what it emits. Needs a decision on where market state
-lives between ticks, which is the first genuinely new design question since
-Phase 2.
+```
+Watchlist       = what the user cares about
+Attention feed  = what changed enough to deserve attention
+```
 
-Constraints either way: the domain does not change to accommodate transport, and
-replay must not require a second code path through the engine — if it does, the
-engine was not as pure as Phase 2 claimed.
+Needs a price source for quiet instruments, which is the first thing the log
+alone cannot supply.
+
+**Simulated ingestion.** Feed ticks through `observeTick` on a timer and append
+what it emits. This is a real phase, not a garnish: duplicate ticks,
+out-of-order arrival, staleness, what survives restart, and where market state
+lives between ticks are all undecided.
+
+Constraint either way: stop adding backend cleverness. The remaining risk is
+presentation, not correctness.
 
 ---
 
@@ -263,6 +270,32 @@ engine was not as pure as Phase 2 claimed.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 5: replay
+
+Watch the story instead of reading it.
+
+- **Added** `domain/replay/replay.ts` — a cursor over a frozen timeline.
+  `createReplay`, `advance`, `restart`, `revealed`, plus `netChangeAtCursor`,
+  which is what makes the demo land: the snapshot number moves and returns to
+  0.00% while the revealed events stay.
+- **Added** `GET /api/replay?instrumentId=…` and a Replay tab with three
+  controls — Play, Next, Restart. No seek bar, no playback rates.
+- **R1 and R5 are structural.** The replay route takes no `WatermarkStore` and
+  the request cannot name a user, so it has no way to advance one.
+
+Mutation-tested. Ordering by timestamp, unfreezing the timeline, and leaking
+other instruments each failed. The first R5 mutation was a no-op on my part and
+is reported as such; breaking R5 properly required adding watermark access at
+the app-wiring level, which failed 2 tests immediately.
+
+**On R4:** there is no `Clock` in replay, deliberately. Replay is cursor-based,
+so no wall-clock read exists to inject; the only real time is the UI's
+auto-advance interval, which is a component parameter. Threading a `Clock`
+through to satisfy the letter of the rule would be the ceremony §2.3 forbids.
+
+Gate: `npm run verify` green — 142 tests, 18 files. Verified live: replaying
+twice leaves 0 watermark rows.
 
 ### 2026-09-04 — Phase 4: attention feed and the first product screen
 

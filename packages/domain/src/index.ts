@@ -8,6 +8,7 @@ export type {
   AttentionFeedResponse,
   FeedEvent,
   FeedInstrumentSummary,
+  ReplayResponse,
 } from './contracts/attention.js';
 
 export type { BasisPoints, PriceMinor } from './market/money.js';
@@ -35,6 +36,18 @@ export type { InstrumentSummary } from './attention/feed.js';
 export { summariseUnread } from './attention/feed.js';
 
 export { rankBySignificance } from './attention/ranking.js';
+
+export type { Replay } from './replay/replay.js';
+export {
+  advance,
+  createReplay,
+  isComplete,
+  netChangeAtCursor,
+  openingPrice,
+  priceAtCursor,
+  restart,
+  revealed,
+} from './replay/replay.js';
 
 export type { UserReadWatermark } from './attention/watermark.js';
 export { hasUnread, joiningAt, markRead, newReader, unreadFor } from './attention/watermark.js';

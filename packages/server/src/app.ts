@@ -3,6 +3,7 @@ import { systemClock, type Clock } from '@market-pulse/domain';
 import type { Database } from './db/connection.js';
 import { createSystemRoutes } from './modules/system/system.routes.js';
 import { createAttentionRoutes } from './modules/attention/attention.routes.js';
+import { createReplayRoutes } from './modules/replay/replay.routes.js';
 import { createEventStore } from './modules/market/event-store.js';
 import { createWatermarkStore } from './modules/attention/watermark-store.js';
 import { uuidEventIds } from './ids.js';
@@ -27,6 +28,7 @@ export function createApp({ db, version, clock = systemClock }: CreateAppOptions
   app.use(express.json());
   app.use('/api', createSystemRoutes({ db, clock, version }));
   app.use('/api', createAttentionRoutes({ events, watermarks }));
+  app.use('/api', createReplayRoutes({ events }));
 
   app.use((_req, res) => {
     res.status(404).json({ error: 'Not Found' });

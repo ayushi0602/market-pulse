@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 4 — attention feed |
+| **Iteration** | 5 — replay |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 111 passing, 15 files |
+| **Tests** | 142 passing, 18 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
 | **Market features** | End to end: engine → log → watermark → API → screen. |
 
-**Next up:** Iteration 5 — replay/demo mode. Scope and constraints are recorded
-in [CLAUDE.md](CLAUDE.md).
+**Next up:** watchlist context or simulated ingestion — the remaining risk is
+presentation, not correctness. Scope is recorded in [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -437,3 +437,72 @@ assertion was corrected and the reasoning recorded in the test.
 - Instruments that never cross the threshold (TCS in the seed) appear nowhere in
   the feed. Correct today, but a watchlist screen will need a price source.
 - Still no CI, no auth. `userId` is a query parameter and a text box.
+
+---
+
+## Iteration 5 — Replay
+
+**Date:** 2026-09-04
+**Goal:** Turn the golden scenario into something you watch rather than read,
+without giving replay any power to change what it is replaying.
+
+### Built
+
+| File | Contents |
+| --- | --- |
+| `domain/replay/replay.ts` | `Replay`, `createReplay`, `advance`, `restart`, `revealed`, `isComplete`, `openingPrice`, `priceAtCursor`, `netChangeAtCursor` |
+| `server/modules/replay/replay.routes.ts` | `GET /api/replay?instrumentId=…` |
+| `web/src/Replay.tsx` | The Replay tab: Play, Next, Restart |
+
+### Decisions
+
+| Decision | Reasoning |
+| --- | --- |
+| The cursor lives in the client | A server-side replay cursor would be per-viewer session state — exactly the mutable, user-scoped thing replay is supposed not to have. |
+| The replay route takes no `WatermarkStore` | R5 then holds structurally rather than by discipline. It also takes an `EventStore` with no update or delete, which is how R1 holds. |
+| The request cannot name a user | A replay that cannot identify a viewer cannot advance one's read position. |
+| Order by `sequence`, never `occurredAt` | Two events can share an instant. Replaying in a different order than recorded would show a story that never happened. |
+| Three controls, no more | A seek bar, playback rates and a timeline widget were all plausible; none makes the point better than "the price came back and the events did not go away". |
+| `netChangeAtCursor` in the domain | The number that makes the demo land is a pure function of the projection, so it is testable without a browser. |
+| **No `Clock` in replay** | *Deviation from the sketched R4.* Replay is cursor-based: visible state is a pure function of `(timeline, cursor)`, so there is no wall-clock read to inject. Threading a `Clock` through would be ceremony — an abstraction with nothing on the other side. Real time appears only in the UI's auto-advance, which is a component parameter so tests drive the story in milliseconds. |
+
+### Verified
+
+| Invariant | Status |
+| --- | --- |
+| **R1** canonical history is immutable | Event rows byte-identical after replaying; the projection freezes its own timeline and rejects mutation at runtime |
+| **R2** replay is deterministic | Identical visible state across 30 runs; independent of the order records arrive |
+| **R3** order follows sequence | Proved with events sharing a timestamp, and with a record whose timestamp contradicts its position |
+| **R4** time is injectable | Satisfied by absence — see the decision above |
+| **R5** replay acknowledges nothing | No watermark row created across repeated replays; an existing watermark unmoved; the client issues no write while stepping |
+
+- `npm run verify` → green: **142 tests in 18 files**.
+- **Verified live:** with the server running, two replay requests left the
+  `user_read_watermarks` table at 0 rows.
+- **Mutation-tested.** Ordering by timestamp (1 failure), unfreezing the
+  timeline (1), and leaking other instruments into the story (4) each broke the
+  matching invariant.
+
+  My first attempt at an R5 mutation was **a no-op** — it changed only
+  whitespace, so the clean result meant nothing, and is reported here rather
+  than presented as a pass. That failure was informative: R5 could not be broken
+  by editing the route at all, because the module has no watermark access.
+  Violating it required adding that access at the app-wiring level, which failed
+  2 tests immediately. Structural guarantees are harder to mutation-test
+  precisely because they are structural.
+
+### Course correction
+
+The gate caught `setState` called synchronously inside an effect for the second
+time in this project — the auto-play loop corrected `playing` to `false` on
+completion. Fixed by *deriving* rather than storing: "playing but finished" is
+not a state the component can be in, so it is computed. Writing state inside an
+effect to fix up other state is the pattern that causes cascading renders, and
+it is now been the cause of both lint failures in the web package.
+
+### Open items carried forward
+
+- An instrument that never crosses the threshold appears nowhere. Correct for a
+  feed; wrong for a watchlist. That distinction is the next phase.
+- No tick ingestion; events still arrive via the seed script or tests.
+- Still no CI, no auth.

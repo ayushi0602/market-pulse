@@ -1,4 +1,8 @@
-import type { AcknowledgeResponse, AttentionFeedResponse } from '@market-pulse/domain';
+import type {
+  AcknowledgeResponse,
+  AttentionFeedResponse,
+  ReplayResponse,
+} from '@market-pulse/domain';
 
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -34,5 +38,15 @@ export async function acknowledge(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ userId, throughSequence }),
     }),
+  );
+}
+
+export async function fetchReplay(
+  instrumentId: string,
+  signal?: AbortSignal,
+): Promise<ReplayResponse> {
+  const init = signal ? { signal } : {};
+  return json<ReplayResponse>(
+    await fetch(`/api/replay?instrumentId=${encodeURIComponent(instrumentId)}`, init),
   );
 }
