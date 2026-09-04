@@ -1,0 +1,13 @@
+{
+  "name": "@market-pulse/domain",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Pure domain core. No HTTP, no database, no React.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

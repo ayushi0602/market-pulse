@@ -1,0 +1,26 @@
+{
+  "name": "@market-pulse/web",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Market Pulse web client. Scaffold only - no product screens yet.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@market-pulse/domain": "*",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^28.0.0",
+    "vite": "^8.2.2"
+  }
+}
