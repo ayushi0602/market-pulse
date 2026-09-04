@@ -54,6 +54,17 @@ npm run dev
 The web dev server proxies `/api` to the backend, so the browser stays on a
 single origin and there is no CORS configuration to maintain.
 
+Seed the demo data — the golden scenario plus two contrasting instruments:
+
+```bash
+npm run db:seed
+```
+
+Then open http://localhost:5173 and toggle between **Traditional watchlist** and
+**Market Pulse**. RELIANCE ends the day exactly where it started: the traditional
+view reports 0.00%, and the feed reports the 9% fall and the 9.89% recovery that
+happened in between.
+
 Verify it is up:
 
 ```bash

@@ -17,6 +17,7 @@
     "build": "npm run build -w @market-pulse/web",
     "start": "npm run start -w @market-pulse/server",
     "db:migrate": "npm run db:migrate -w @market-pulse/server",
+    "db:seed": "npm run db:seed -w @market-pulse/server",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "npm run typecheck --workspaces",

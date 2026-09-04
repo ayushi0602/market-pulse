@@ -2,6 +2,13 @@ export type { Clock, Timestamp } from './clock.js';
 export { fixedClock, systemClock } from './clock.js';
 
 export type { HealthResponse, ServiceStatus } from './contracts/system.js';
+export type {
+  AcknowledgeRequest,
+  AcknowledgeResponse,
+  AttentionFeedResponse,
+  FeedEvent,
+  FeedInstrumentSummary,
+} from './contracts/attention.js';
 
 export type { BasisPoints, PriceMinor } from './market/money.js';
 export { changeInBasisPoints, paise, rupees, toPercent, toRupees } from './market/money.js';
@@ -23,6 +30,11 @@ export { append, emptySequence, recordsAfter } from './market/log.js';
 
 export type { UserId } from './attention/user.js';
 export { userId } from './attention/user.js';
+
+export type { InstrumentSummary } from './attention/feed.js';
+export { summariseUnread } from './attention/feed.js';
+
+export { rankBySignificance } from './attention/ranking.js';
 
 export type { UserReadWatermark } from './attention/watermark.js';
 export { hasUnread, joiningAt, markRead, newReader, unreadFor } from './attention/watermark.js';

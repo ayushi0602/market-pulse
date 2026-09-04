@@ -224,6 +224,68 @@ constant in every row — a shape that looks like a decision but records nothing
 The key widens in the migration that introduces watchlists, which is a small
 change against a table nothing else references yet.
 
+## The attention feed
+
+Two endpoints, and the split between them is a product-correctness decision.
+
+```
+GET  /api/attention-feed?userId=…    reads.  Never writes.
+POST /api/attention-feed/ack         acknowledges. Only on explicit intent.
+```
+
+**Reading is not acknowledging.** Advancing the watermark on read is the
+natural-looking shortcut and it is a bug: a flaky connection, a background
+prefetch, a refresh or a second tab would silently consume events the user never
+saw — and the watermark only moves forward, so they are unrecoverable.
+Displaying and acknowledging are different events in the world, so they are
+different requests (F1). The client honours the same rule: nothing in the UI
+issues a write during render.
+
+The response carries `throughSequence` — the head *as of this read* — and the
+client acknowledges that, not whatever the head becomes later. Otherwise events
+arriving between the read and the acknowledgement would be marked seen without
+ever being shown.
+
+### Feed invariants
+
+| # | Invariant | Proved by |
+| --- | --- | --- |
+| **F1** | Fetching never advances the watermark. | `attention-feed.test.ts`, `App.test.tsx` |
+| **F2** | Acknowledging sequence N advances to at least N. | `attention-feed.test.ts` |
+| **F3** | A stale acknowledgement cannot move backwards. | `attention-feed.test.ts` |
+| **F4** | The feed contains only events after the watermark. | `attention-feed.test.ts` |
+| **F5** | Ranking is deterministic. | `attention/ranking.test.ts` |
+
+### Ranking
+
+Magnitude, largest first; ties break toward the newer event by **sequence**, not
+timestamp — a tie-break that can itself tie is not a tie-break. Since sequences
+are unique the comparator is a total order, so the result cannot depend on the
+sort implementation.
+
+Every event in the log already crossed the significance threshold, so ranking is
+not "is this significant" — the engine answered that. It is only "in what order
+should a returning user read them". Volatility normalisation, volume anomalies
+and market-relative movement are all plausible refinements, and none are
+justified before there is a screen to judge them against: nobody can tell a good
+weighting from a bad one without the UX to compare them in.
+
+### Making the argument visible
+
+The feed also carries what a **traditional watchlist would have said**, computed
+from the same events: net change from the price when the user last looked to the
+latest recorded price. The UI shows both behind a toggle.
+
+This is the honest form of the product claim. Rather than asserting that
+snapshot views are inadequate, the response carries the snapshot's own answer and
+lets them be compared. When that number is `0.00%` and `meaningfulChanges` is 2,
+the argument makes itself.
+
+One wording constraint follows from the event contract: `latestPrice` is the
+latest price *the log knows about*, not the live market price — no tick since
+the last threshold crossing is recorded. Labels must say "as recorded", never
+"current".
+
 ## Explicitly deferred
 
 Deferred means *"we have a place to put it, and we are not building it now."*

@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 3 — persistence |
+| **Iteration** | 4 — attention feed |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 78 passing, 11 files |
+| **Tests** | 111 passing, 15 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
-| **Market features** | Domain core complete and durably persisted. No API, no UI. |
+| **Market features** | End to end: engine → log → watermark → API → screen. |
 
-**Next up:** Iteration 4 — attention feed API and the "Since you last checked"
-screen. Scope and constraints are recorded in [CLAUDE.md](CLAUDE.md).
+**Next up:** Iteration 5 — replay/demo mode. Scope and constraints are recorded
+in [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -361,3 +361,79 @@ That is the invariant worth asserting, and it will not need editing again.
 - Significance *ranking* still unbuilt — it belongs with the feed.
 - `watchlist_id` deferred, as above. One migration when watchlists exist.
 - Still no CI.
+
+---
+
+## Iteration 4 — Attention feed and the first product screen
+
+**Date:** 2026-09-04
+**Goal:** Make the architecture visible. Turn the event log, the watermark and
+the significance engine into a screen that answers "what happened while I was
+away".
+
+### Built
+
+| File | Contents |
+| --- | --- |
+| `domain/attention/ranking.ts` | `rankBySignificance` — magnitude desc, tie-break by sequence |
+| `domain/attention/feed.ts` | `summariseUnread` — what a traditional watchlist would report |
+| `domain/contracts/attention.ts` | Wire contracts for the feed and acknowledgement |
+| `server/modules/attention/attention.routes.ts` | `GET /attention-feed`, `POST /attention-feed/ack` |
+| `server/db/seed.ts` | Demo data: the golden scenario plus a plain decline and a quiet instrument |
+| `web/src/App.tsx`, `AttentionFeed.tsx` | "While you were away" + the comparison toggle |
+| `web/src/api.ts`, `format.ts`, `styles.css` | Client plumbing and display |
+
+### Decisions
+
+| Decision | Reasoning |
+| --- | --- |
+| Reading and acknowledging are separate requests | Advancing on read is the natural-looking shortcut and a correctness bug: a refresh, a prefetch or a second tab would consume events the user never saw, and the watermark only moves forward. |
+| The client acknowledges `throughSequence` from the read it displayed | Acknowledging the *current* head would mark events seen that arrived after the render and were never shown. |
+| Ranking ties break by `sequence`, not `occurredAt` | Two events can share an instant. A tie-break that can itself tie is not a tie-break; sequences are unique, so the comparator is a total order and F5 does not rely on sort stability. |
+| Ranking is `ABS(magnitudeBps)` and nothing more | Every event already crossed the threshold. Weighted models are unfalsifiable without a screen to judge them against. |
+| The feed carries the *traditional* answer too | The honest form of the claim: ship the snapshot view's own number and let the comparison speak. Asserting that snapshot views are inadequate is weaker than showing 0.00% next to "2 meaningful changes". |
+| Wire contract keeps `instrumentId`/`direction` and an unsigned magnitude | Renaming to `symbol`/`type` across the boundary buys translation bugs; a signed magnitude would merge "how big" and "which way" back into one field. |
+| A seed script, not test fixtures | Tests build their own data. This exists so `npm run dev` shows something. |
+
+### Verified
+
+- `npm run verify` → green: **111 tests in 15 files**, format, lint, typecheck, build.
+- **Verified live, not only in tests.** With the server running and the database
+  seeded, `GET /api/attention-feed?userId=demo` returns `netChangeBps: 0` and
+  `meaningfulChanges: 2` for RELIANCE, with the 20% INFY decline ranked above
+  both RELIANCE events.
+- **Mutation-tested.** Advancing the watermark on GET (3 failures), ignoring the
+  watermark when selecting events (6), ranking by recency (1), and flipping the
+  upsert's `MAX` to `MIN` (3) each broke the matching invariant.
+
+| Invariant | Status |
+| --- | --- |
+| **F1** fetching never advances the watermark | Proved server-side and at the client boundary — a render issues no POST |
+| **F2** acknowledging advances to at least N | Proved, including partial acknowledgement |
+| **F3** stale acknowledgement cannot move backwards | Proved via the two-tab case |
+| **F4** feed contains only events after the watermark | Proved, including two users differing at the same instant |
+| **F5** ranking is deterministic | Proved over repeated requests |
+
+### Course corrections
+
+Two lint errors surfaced by the gate were fixed in the code rather than
+silenced, per §2.8:
+
+1. `setState` called synchronously inside an effect triggers cascading renders.
+   `load` no longer sets the loading state itself; the previous feed now stays on
+   screen while the next loads, which is better behaviour anyway.
+2. `String(body)` on a `BodyInit` risked `[object Object]`. The test now asserts
+   the body is a string before parsing it.
+
+One test assertion was wrong, not the code: it expected `+0.00%` for a flat
+change. `0.00%` is correct — a sign implies a direction there isn't one — so the
+assertion was corrected and the reasoning recorded in the test.
+
+### Open items carried forward
+
+- No tick ingestion: events reach the database via the seed script or tests.
+- `latestPrice` is the latest price *the log knows about*. UI labels say "as
+  recorded"; nothing may relabel it "current" without real tick data behind it.
+- Instruments that never cross the threshold (TCS in the seed) appear nowhere in
+  the feed. Correct today, but a watchlist screen will need a price source.
+- Still no CI, no auth. `userId` is a query parameter and a text box.

@@ -234,26 +234,28 @@ proxied so there is no CORS to maintain.
 | 1.5 | Quality gate: ESLint, Prettier, enforced boundaries, `verify` | ✅ done |
 | 2 | Domain model + golden scenario | ✅ done |
 | 3 | Persistence for the event log and watermarks | ✅ done |
-| 4 | **Attention feed API + "Since you last checked"** | ⏳ next |
-| 5 | UI: "Since you last checked" | ⬜ |
-| 6 | Replay / demo mode | ⬜ |
+| 4 | Attention feed API + "Since you last checked" | ✅ done |
+| 5 | Live tick ingestion | ⬜ |
+| 6 | **Replay / demo mode** | ⏳ next |
 
-### Phase 4 scope (next)
+### Phase 5/6 scope (next)
 
-**Make the engineering visible.** Everything proved so far — purity,
-immutability, monotonicity, ordering — is invisible to someone using the app.
-Phase 4 is where it becomes obvious.
+Two candidates, in the order that adds the most to the submission:
 
-- `GET /api/feed?user=…` — what this user missed, from their watermark forward.
-- `POST /api/feed/read` — acknowledge up to a position.
-- Ranking by significance, not recency. This is where `significance` scoring
-  belongs; it was deliberately left out of Phase 2.
-- The "Since you last checked" screen, which must show that a price back at its
-  starting value still has a story.
+**Replay / demo mode** — drive the golden scenario through the live system on a
+timer so the story can be watched rather than described: the price falls, the
+feed fills, the price recovers, the traditional view returns to 0.00%. This is
+the strongest demo asset and reuses the `Clock` port that has been waiting for it
+since Phase 1.
 
-Constraints: the feed is a pure read over the log; it never mutates it.
-Acknowledging is a separate action from displaying. Ranking is a pure function
-of events, testable without a database.
+**Live tick ingestion** — an endpoint or poller that feeds real ticks through
+`observeTick` and appends what it emits. Needs a decision on where market state
+lives between ticks, which is the first genuinely new design question since
+Phase 2.
+
+Constraints either way: the domain does not change to accommodate transport, and
+replay must not require a second code path through the engine — if it does, the
+engine was not as pure as Phase 2 claimed.
 
 ---
 
@@ -261,6 +263,33 @@ of events, testable without a database.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 4: attention feed and the first product screen
+
+The phase where the architecture becomes visible.
+
+- **Added** `GET /api/attention-feed` and `POST /api/attention-feed/ack`. The
+  split is the point: reading never writes (F1). Advancing on read would be the
+  natural shortcut and a correctness bug — a refresh or a second tab would
+  consume events the user never saw, unrecoverably.
+- **Added** `attention/ranking.ts` (magnitude desc, tie-break by sequence — a
+  total order, so F5 does not depend on sort stability) and `attention/feed.ts`
+  (`summariseUnread`, which computes **what a traditional watchlist would have
+  said** from the same events).
+- **Added** the "While you were away" screen with a Traditional / Market Pulse
+  toggle. Same data, two answers: `0.00%` and "2 meaningful changes".
+- **Added** `npm run db:seed` so the screen has something to show.
+
+F1–F5 all have named tests, mutation-checked: advancing on GET, ignoring the
+watermark, ranking by recency, and flipping `MAX` to `MIN` each produced
+failures.
+
+Gate: `npm run verify` green — 111 tests, 15 files. Verified live, not only in
+tests: the running API returns `netChangeBps: 0` alongside
+`meaningfulChanges: 2` for RELIANCE.
+
+Wording constraint carried from the event contract: `latestPrice` is the latest
+price *the log knows about*, not the live price. UI labels say "as recorded".
 
 ### 2026-09-04 — Phase 3: persistence
 
