@@ -14,10 +14,10 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 7 — finalization |
+| **Iteration** | 8 — front-end pass |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 180 passing, 19 files |
+| **Tests** | 184 passing, 19 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
 | **Market features** | End to end: engine → log → watermark → API → screen. |
 
@@ -728,3 +728,56 @@ What held up unchanged at every width:
 
 Feature-complete, audited, and submission-ready. `npm run verify` green at 180
 tests across 19 files. Nine commits, clean tree.
+
+---
+
+## Iteration 8 — Front-end pass
+
+**Date:** 2026-09-04
+**Goal:** Make the model visible. UI only — no domain, API or schema changes.
+
+### Built
+
+| Change | Why |
+| --- | --- |
+| Feed grouped by instrument | Ranking and narrative are different questions. Instruments rank by largest move; events inside a story run chronologically. Fixes "recovery above the decline that caused it" **without touching the ranking rule** — F5 is unchanged. |
+| `StoryPath` | The shape of what happened, drawn from the events, with a dashed baseline at the starting price. Not a price chart: there is no tick data, so the line has exactly as many vertices as the system actually knows about. Shared by the feed and replay. |
+| "Why is this significant?" | Discloses anchor, crossing price, move and threshold, reading `DEFAULT_RULE` from the domain. The brief left the definition of "meaningful" to us; the rule should be checkable, not trusted. |
+
+### Verified
+
+- `npm run verify` → green: **184 tests in 19 files**.
+- Inspected at 900px and 390px; no horizontal overflow at either.
+
+Two rendering defects found by looking, not by testing:
+
+1. **The arrow badge stretched** to the full height of an open disclosure,
+   turning a small marker into a heavy coloured stripe. Fixed with
+   `align-items: start`.
+2. **`preserveAspectRatio="none"` rendered circular markers as ellipses** — x
+   and y scale by different factors when the viewBox is stretched to fill a
+   container. Replaced with vertical ticks using a non-scaling stroke, which are
+   immune to it.
+
+### Course corrections
+
+Two test assertions were wrong, not the code, and both were corrected rather
+than the behaviour changed:
+
+- `getByText(/2 meaningful changes/)` became ambiguous once the story card also
+  showed a count. Scoped to the page subtitle.
+- A disclosure assertion expected `9.89%` in the first panel. The first panel is
+  the *decline* (9.00%), because events inside a story now run chronologically —
+  the assertion was written against the old flat ordering. This was evidence the
+  grouping worked.
+
+Also worth recording: `<details>` keeps its content in the DOM whether open or
+not, so `getByText` finds collapsed content. The meaningful assertion is the
+`open` property, not queryability.
+
+### Deliberately not built
+
+A component library (`InstrumentRow`, `StatusPill`, `PriceDisplay`,
+`StoryTimeline`). Three screens do not need one, and it is exactly the
+speculative abstraction §2.3 exists to refuse. Consistent tokens and type scale,
+yes; a component layer, no.

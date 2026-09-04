@@ -13,6 +13,7 @@ import {
   revealed,
 } from '@market-pulse/domain';
 import { fetchReplay } from './api.js';
+import { StoryPath } from './StoryPath.jsx';
 import { formatPercent, formatPrice, formatTime, pluralise } from './format.js';
 
 /** The wire shape back into the domain shape the replay projection works on. */
@@ -28,6 +29,20 @@ function toRecord(event: FeedEvent): RecordedMarketEvent {
       magnitudeBps: event.magnitudeBps,
       occurredAt: event.occurredAt,
     },
+  };
+}
+
+/** Back to the wire shape, so the story drawing has one input type. */
+function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
+  return {
+    eventId: record.eventId,
+    sequence: record.sequence,
+    instrumentId: record.event.instrumentId,
+    direction: record.event.direction,
+    fromPrice: record.event.fromPrice,
+    toPrice: record.event.toPrice,
+    magnitudeBps: record.event.magnitudeBps,
+    occurredAt: record.event.occurredAt,
   };
 }
 
@@ -141,6 +156,13 @@ export function ReplayView({ instrumentId: symbol, stepIntervalMs = 1400 }: Repl
           </div>
         </div>
       </div>
+
+      {shown.length > 0 && (
+        <div className="card replay-story">
+          {/* The same shape the feed draws, filling in as the cursor moves. */}
+          <StoryPath events={shown.map((r) => toFeedEvent(r))} />
+        </div>
+      )}
 
       <ol className="timeline">
         {shown.map((record) => (

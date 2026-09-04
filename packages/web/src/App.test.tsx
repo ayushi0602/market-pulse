@@ -86,7 +86,9 @@ describe('the returning user sees what they missed', () => {
     await openAttentionTab();
 
     expect(await screen.findByRole('heading', { name: 'While you were away' })).toBeDefined();
-    expect(screen.getByText(/2 meaningful changes/)).toBeDefined();
+    // Scoped to the page subtitle: the count also appears on the story card
+    // header now, so an unscoped query matches both.
+    expect(screen.getByText('2 meaningful changes across 1 instrument.')).toBeDefined();
   });
 
   it('shows the decline and the recovery, with the prices that bracket them', async () => {
@@ -207,5 +209,104 @@ describe('failure is explained, not hidden', () => {
     await openAttentionTab();
     expect(await screen.findByText('Something went wrong')).toBeDefined();
     expect(screen.getByText(/API responded 500/)).toBeDefined();
+  });
+});
+
+describe('ranking and narrative are separated', () => {
+  const twoInstruments: AttentionFeedResponse = {
+    ...goldenFeed,
+    summary: {
+      meaningfulChanges: 3,
+      instruments: [
+        ...goldenFeed.summary.instruments,
+        {
+          instrumentId: 'INFY',
+          priceWhenLastSeen: 150_000,
+          latestPrice: 120_000,
+          netChangeBps: -2000,
+          meaningfulChanges: 1,
+        },
+      ],
+    },
+    events: [
+      {
+        eventId: 'e-3',
+        sequence: 3,
+        instrumentId: 'INFY',
+        direction: 'decline',
+        fromPrice: 150_000,
+        toPrice: 120_000,
+        magnitudeBps: 2000,
+        occurredAt: 1_700_020_000_000,
+      },
+      ...goldenFeed.events,
+    ],
+  };
+
+  it('orders instruments by their largest move', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : twoInstruments));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // INFY moved 20%, RELIANCE's largest was 9.89%.
+    const symbols = screen.getAllByText(/^(INFY|RELIANCE)$/).map((el) => el.textContent);
+    expect(symbols[0]).toBe('INFY');
+    expect(symbols[1]).toBe('RELIANCE');
+  });
+
+  it('runs each instrument’s own events in the order they happened', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : twoInstruments));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // The decline caused the recovery, so it is shown first -- even though the
+    // recovery is the larger move and would outrank it in a flat list.
+    const moves = screen.getAllByText(/^(Fell|Recovered) /).map((el) => el.textContent?.trim());
+    expect(moves).toEqual(['Fell 20.00%', 'Fell 9.00%', 'Recovered 9.89%']);
+  });
+
+  it('draws the shape of each story', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : twoInstruments));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // RELIANCE returns to its starting price; the caption says so.
+    expect(screen.getByText(/exactly where it started/)).toBeDefined();
+  });
+});
+
+describe('the significance rule is visible, not implied', () => {
+  it('explains why an event was recorded, on demand', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // One per event, collapsed by default. `details` keeps its content in the
+    // DOM either way, so the meaningful assertion is the open state, not
+    // queryability.
+    const disclosures = screen.getAllByText('Why is this significant?');
+    expect(disclosures).toHaveLength(2);
+
+    const first = disclosures[0];
+    if (first === undefined) {
+      throw new Error('Expected a disclosure');
+    }
+    const panel = first.closest('details');
+    expect(panel?.open).toBe(false);
+    fireEvent.click(first);
+    expect(panel?.open).toBe(true);
+
+    // The explanation names the anchor, the move and the rule that fired.
+    expect(panel?.textContent).toContain('Anchor when the move began');
+    expect(panel?.textContent).toContain('Threshold in force');
+    // The threshold comes from the domain rule, not a string typed into the UI.
+    expect(panel?.textContent).toContain('5.00%');
+    // The first disclosure belongs to the decline, because events inside a
+    // story run chronologically -- the fall came before the recovery.
+    expect(panel?.textContent).toContain('9.00%');
   });
 });

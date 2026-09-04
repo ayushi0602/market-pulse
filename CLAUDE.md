@@ -325,6 +325,38 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
 
+### 2026-09-04 — Phase 8: front-end pass (UI only)
+
+Three changes to the front end. No domain, API or schema changes — the feed
+endpoint returns exactly what it did before.
+
+- **Ranking and narrative separated.** The feed groups events by instrument.
+  Instruments are ranked by their largest move (the attention question);
+  events *inside* a story run chronologically (the narrative question). This
+  removes the oddity where RELIANCE's recovery outranked the decline that
+  caused it, **without touching the ranking rule** — F5 is unchanged.
+- **`StoryPath`** draws the shape of what happened from the events themselves,
+  with a dashed baseline at the starting price. When the path returns to that
+  line the picture makes the argument. Used by the feed and by replay, so the
+  two screens share one visual language.
+- **"Why is this significant?"** discloses the anchor, the crossing price, the
+  move and the threshold, reading `DEFAULT_RULE` from the domain rather than a
+  number typed into the UI. The brief left "what counts as meaningful" to us, so
+  the rule should be legible rather than taken on trust.
+
+Two rendering defects were found by looking and fixed: the arrow badge stretched
+to the height of an open disclosure (turning a marker into a heavy stripe), and
+`preserveAspectRatio="none"` rendered the path's circular markers as ellipses.
+The markers are now vertical ticks with a non-scaling stroke, which are immune to
+non-uniform scaling.
+
+Deliberately **not** built, despite being on the review's list: a component
+library (`InstrumentRow`, `StatusPill`, `PriceDisplay`). Three screens do not
+need one, and it is the kind of abstraction §2.3 exists to refuse. Tokens and a
+type scale, yes; a component layer, no.
+
+Gate: `npm run verify` green — 184 tests, 19 files. No overflow at 390 or 900px.
+
 ### 2026-09-04 — Phase 7: finalization, no new features
 
 Presentation and reliability only.
