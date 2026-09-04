@@ -279,6 +279,13 @@ Presentation and reliability only.
 - **Rewrote README** to lead with the problem and the thesis rather than the
   stack, with a 60-second walkthrough and an explicit trade-offs section.
 
+**The UI was inspected, not assumed.** Chrome driven headless over CDP (no
+Playwright in the dependency tree) captured the five-step journey. Two
+presentation fixes followed: the ranking explanation now precedes the event list
+(significance ranking can put a recovery above the decline that caused it, which
+needs framing *before* the reader meets it), and "Remove" no longer competes
+with the primary action.
+
 Gate: `npm run verify` green — 180 tests, 19 files, stable across repeated runs.
 
 **A note for whoever picks this up:** the remaining risk is presentation, not

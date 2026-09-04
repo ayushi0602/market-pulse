@@ -315,14 +315,31 @@ button.link {
   appearance: none;
   border: 0;
   background: none;
-  color: var(--muted);
+  color: var(--accent);
   font: inherit;
   font-size: 0.8125rem;
+  font-weight: 600;
   padding: 0.25rem 0;
   cursor: pointer;
-  text-decoration: underline;
 }
 
 button.link:hover {
+  text-decoration: underline;
+}
+
+/*
+ * Destructive and secondary. It shared the primary action's weight and sat in
+ * the price column, which drew the eye toward the one control that throws work
+ * away.
+ */
+button.link.quiet {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 0.75rem;
+  opacity: 0.75;
+}
+
+button.link.quiet:hover {
+  opacity: 1;
   color: var(--text);
 }

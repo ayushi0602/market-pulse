@@ -10,6 +10,14 @@ export function AttentionFeed({ feed }: { feed: AttentionFeedResponse }) {
 
   return (
     <div>
+      {/* Above the list, not below it: the largest move leads, so a recovery can
+          appear before the decline that caused it. The reader needs that framing
+          before they meet it, not after. */}
+      <p className="muted" style={{ marginTop: 0, marginBottom: '0.875rem' }}>
+        Ranked by significance, not recency — positions {feed.sinceSequence + 1}–
+        {feed.throughSequence} of the shared event log.
+      </p>
+
       {feed.events.map((event) => {
         const verb = event.direction === 'decline' ? 'Fell' : 'Recovered';
         return (
@@ -46,11 +54,6 @@ export function AttentionFeed({ feed }: { feed: AttentionFeedResponse }) {
           </p>
         </div>
       )}
-
-      <p className="muted" style={{ marginTop: '1.5rem' }}>
-        Ranked by significance, not recency. Positions {feed.sinceSequence + 1}–
-        {feed.throughSequence} of the shared event log.
-      </p>
     </div>
   );
 }

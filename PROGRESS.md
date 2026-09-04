@@ -665,3 +665,29 @@ documented in the README, not oversights:
 - Staged moves are reported in pieces (the re-anchoring trade-off).
 - One user, one watchlist, no auth.
 - No CI, because there is no remote to run it on.
+
+### Visual inspection (added after the first finalization pass)
+
+The UI was inspected rather than assumed. Chrome was driven headless over CDP
+(no Playwright or Puppeteer in the dependency tree — Node's built-in WebSocket
+client was enough) to capture the five-step reviewer journey and look at it.
+
+What held up: the watchlist reads "3 instruments followed. 2 need your
+attention." at a glance; TCS looks deliberately quiet rather than broken or
+empty; the traditional view shows `₹2,900.00 / No change since your last check /
+0.00%` directly above "3 meaningful transitions happened while you were away";
+and the replay's closing line reads as a conclusion rather than marketing.
+
+Two presentation problems were found and fixed:
+
+1. **The ranking explanation sat below the event list.** Because events are
+   ranked by significance, RELIANCE's *"Recovered 9.89%"* appears above the
+   *"Fell 9.00%"* that caused it — correct per F5, and briefly baffling to a
+   first-time reader who meets it with no framing. The note now precedes the
+   list. The ranking itself was not touched.
+2. **"Remove" carried the same weight as the primary action** and sat in the
+   price column, drawing the eye toward the one control that throws work away.
+   It is now quiet and secondary; "View what happened →" leads.
+
+Both are presentation-only. No behaviour changed, and the 27 web tests were
+green before and after.

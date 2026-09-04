@@ -56,7 +56,7 @@ function Row({
         </div>
         <button
           type="button"
-          className="link"
+          className="link quiet"
           onClick={() => onRemove(row.instrumentId)}
           aria-label={`Remove ${row.instrumentId}`}
         >
