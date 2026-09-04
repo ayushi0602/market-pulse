@@ -233,28 +233,27 @@ proxied so there is no CORS to maintain.
 | 1 | Foundation: workspaces, domain/server/web, SQLite + migrations, health endpoint, smoke tests | ✅ done |
 | 1.5 | Quality gate: ESLint, Prettier, enforced boundaries, `verify` | ✅ done |
 | 2 | Domain model + golden scenario | ✅ done |
-| 3 | **Persistence for the event log and watermarks** | ⏳ next |
-| 4 | Attention feed API | ⬜ |
+| 3 | Persistence for the event log and watermarks | ✅ done |
+| 4 | **Attention feed API + "Since you last checked"** | ⏳ next |
 | 5 | UI: "Since you last checked" | ⬜ |
 | 6 | Replay / demo mode | ⬜ |
 
-### Phase 3 scope (next)
+### Phase 4 scope (next)
 
-**Persistence only.** Give the domain a durable home without changing its
-behaviour.
+**Make the engineering visible.** Everything proved so far — purity,
+immutability, monotonicity, ordering — is invisible to someone using the app.
+Phase 4 is where it becomes obvious.
 
-- A migration for the event log and per-user watermarks.
-- Repositories in `server/src/modules/` that read and write those tables.
-- The domain code does not change. If persisting the model requires reshaping
-  it, that is a signal worth raising, not a change to make quietly.
+- `GET /api/feed?user=…` — what this user missed, from their watermark forward.
+- `POST /api/feed/read` — acknowledge up to a position.
+- Ranking by significance, not recency. This is where `significance` scoring
+  belongs; it was deliberately left out of Phase 2.
+- The "Since you last checked" screen, which must show that a price back at its
+  starting value still has a story.
 
-The bar: the golden scenario must survive a process restart. Same assertions,
-against a real database, with the events written by one instance and read by
-another.
-
-Constraints: no endpoints, no UI, no abstraction a Phase 3 test does not
-exercise. `RecordedMarketEvent.sequence` is the log's ordering — do not replace
-it with a timestamp.
+Constraints: the feed is a pure read over the log; it never mutates it.
+Acknowledging is a separate action from displaying. Ranking is a pure function
+of events, testable without a database.
 
 ---
 
@@ -262,6 +261,38 @@ it with a timestamp.
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-04 — Phase 3: persistence
+
+The domain from Phase 2, given a durable home. Its behaviour did not change.
+
+- **Locked two decisions first.** (1) `EventId` is now separate from `sequence`
+  in the domain: identity vs. position. Ids come from an `EventIdSource` port —
+  justified by two real implementations, `uuidEventIds` in server and
+  `sequentialIds()` for tests — because the domain may not touch randomness.
+  (2) `MeaningfulMarketEvent` now documents its contract: it is a
+  **threshold-crossing move measured from the active anchor**, explicitly not
+  "the full move" of a run. Any UI copy built on it must not promise more.
+- **Added** migration `002`, `modules/market/event-store.ts`,
+  `modules/attention/watermark-store.ts`, `src/ids.ts`.
+- **Append-only is enforced twice**: the store has no update/delete, and the
+  database refuses both via triggers.
+- **Monotonicity is enforced in SQL** (`MAX(excluded, existing)` in the upsert),
+  so a stale writer cannot un-read — no read-then-write race.
+- **AC1 uses a real child process**, not a reopened handle: a fixture writes the
+  golden scenario and exits, then the test opens the file and reads it back.
+
+All five acceptance criteria have tests, mutation-checked: removing `MAX()`,
+neutering the immutability trigger, dropping `AUTOINCREMENT`, and making the
+child process write nothing each produced failures.
+
+Gate: `npm run verify` green — 78 tests, 11 files.
+
+Two deviations from the sketched schema, both to avoid re-introducing
+imprecision at the storage boundary: `magnitude_bps INTEGER` rather than
+`movement_percent REAL`, and `occurred_at INTEGER` rather than TEXT. Watermarks
+are keyed by `user_id` alone — there is no watchlist entity yet, so the column
+would be a placeholder constant. All three are written up in ARCHITECTURE.md.
 
 ### 2026-09-04 — Phase 2: domain model and the golden scenario
 

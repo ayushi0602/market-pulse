@@ -9,6 +9,9 @@ export { changeInBasisPoints, paise, rupees, toPercent, toRupees } from './marke
 export type { InstrumentId } from './market/instrument.js';
 export { instrumentId } from './market/instrument.js';
 
+export type { EventId, EventIdSource } from './market/event-id.js';
+export { eventId, sequentialIds } from './market/event-id.js';
+
 export type { MarketTick } from './market/tick.js';
 export type { MarketDirection, MeaningfulMarketEvent } from './market/event.js';
 

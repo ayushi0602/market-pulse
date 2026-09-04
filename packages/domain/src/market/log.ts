@@ -1,13 +1,23 @@
 import type { MeaningfulMarketEvent } from './event.js';
+import type { EventId, EventIdSource } from './event-id.js';
 
 /**
  * An event, once it is part of history.
  *
- * The sequence number is assigned on append and is what "where I last looked"
- * refers to. It is the log's own ordering, not a timestamp: two events can
- * share an instant, but they cannot share a position.
+ * Two distinct facts, deliberately separate:
+ *
+ * - `eventId` is **identity**. Stable, never reused, meaningful outside this
+ *   log -- it survives being copied to another store or replayed.
+ * - `sequence` is **position**. The log's own ordering, and the thing a
+ *   watermark points at. It is not a timestamp: two events can share an
+ *   instant, but they cannot share a position.
+ *
+ * An auto-increment key would supply both and thereby hide the distinction.
+ * Keeping them apart means "which event" and "how far have I read" cannot be
+ * accidentally substituted for one another.
  */
 export interface RecordedMarketEvent {
+  readonly eventId: EventId;
   /** 1-based, strictly increasing, never reused. */
   readonly sequence: number;
   readonly event: MeaningfulMarketEvent;
@@ -36,17 +46,23 @@ export const emptySequence: EventSequence = Object.freeze({
   head: 0,
 });
 
-/** Appends events in order, returning a new sequence. The input is untouched. */
+/**
+ * Appends events in order, returning a new sequence. The input is untouched.
+ *
+ * Ids come from a source rather than being generated here, so that appending
+ * stays a pure function of its arguments (I3).
+ */
 export function append(
   log: EventSequence,
   events: readonly MeaningfulMarketEvent[],
+  ids: EventIdSource,
 ): EventSequence {
   if (events.length === 0) {
     return log;
   }
 
   const appended = events.map((event, index) =>
-    Object.freeze({ sequence: log.head + index + 1, event }),
+    Object.freeze({ eventId: ids.next(), sequence: log.head + index + 1, event }),
   );
 
   return Object.freeze({

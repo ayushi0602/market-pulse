@@ -4,6 +4,7 @@ import { rupees, toPercent, toRupees } from './market/money.js';
 import type { MarketTick } from './market/tick.js';
 import { observeTicks } from './market/significance.js';
 import { append, emptySequence } from './market/log.js';
+import { sequentialIds } from './market/event-id.js';
 import { joiningAt, markRead, unreadFor } from './attention/watermark.js';
 import { userId } from './attention/user.js';
 
@@ -49,7 +50,9 @@ describe('golden scenario: the price returns, the history does not', () => {
 
   function replay() {
     const { state, events } = observeTicks(ticks);
-    const log = append(emptySequence, events);
+    // Deterministic ids: the scenario must produce byte-identical output on
+    // every run, so nothing here may reach for randomness.
+    const log = append(emptySequence, events, sequentialIds());
     return { state, events, log };
   }
 

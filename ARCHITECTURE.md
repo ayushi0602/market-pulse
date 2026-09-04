@@ -153,6 +153,77 @@ transaction, recorded in `schema_migrations`. They run automatically on boot and
 are idempotent. `001_init.sql` establishes the mechanism and nothing more;
 domain tables arrive with the features that need them.
 
+## Persistence model
+
+Two tables, and the relationship between them is the architectural claim.
+
+```
+market_events            shared, written once, read by everyone
+      ▲
+      │ references a position, never a copy
+      │
+user_read_watermarks     per user, one row, one integer
+```
+
+**Events are stored once.** There is no per-user copy. Fan-out on write would
+multiply storage by the user count and, worse, would turn "what did I miss" into
+a question about a private queue rather than about shared history. One history,
+many readers, is the design.
+
+### Identity is not ordering
+
+| Column | Is | Is not |
+| --- | --- | --- |
+| `event_id` | Identity. Stable, unique, meaningful outside this log. Survives copying or replay. | A position |
+| `sequence` | Position. `INTEGER PRIMARY KEY AUTOINCREMENT`. What a watermark points at. | An identity |
+
+An auto-increment key supplies both and thereby hides the distinction. Keeping
+them separate means "which event" and "how far have I read" cannot be
+substituted for one another. `AUTOINCREMENT` rather than a plain integer key so
+a value is never reused even in principle: a watermark at 41 must not come to
+mean a different event tomorrow.
+
+Timestamps are never used for ordering. Two events can share an instant; they
+cannot share a position.
+
+### Append-only, enforced twice
+
+The store exposes `append`, `readAfter`, and `head` — there is no `update` and
+no `delete`, so a caller has no way to ask. The database also refuses, via
+`BEFORE UPDATE` and `BEFORE DELETE` triggers that `RAISE(ABORT)`. I2 is the
+load-bearing claim of the product, and an intent expressed only as an API shape
+is one `sqlite3` session away from being violated.
+
+### Watermark monotonicity is enforced in SQL
+
+```sql
+ON CONFLICT (user_id) DO UPDATE SET
+  last_read_sequence = MAX(excluded.last_read_sequence, last_read_sequence)
+```
+
+A stale writer — an old tab, a phone that was offline, a retried request
+arriving out of order — cannot un-read what the user has already seen. Done as
+read-then-write in application code this would leave a race; done in the
+statement it leaves none.
+
+### Two deviations from the sketched schema, and why
+
+- **`magnitude_bps INTEGER`, not `movement_percent REAL`.** A REAL percentage
+  would reintroduce at the storage boundary exactly the floating-point
+  imprecision the domain's integer types exist to prevent, and would let a
+  stored event disagree with the event that produced it.
+- **`occurred_at INTEGER`, not TEXT.** Epoch milliseconds, matching the domain's
+  `Timestamp` and the existing `schema_migrations.applied_at`. Text timestamps
+  invite ambiguity about zone and format.
+
+### Not yet: the subscription dimension
+
+Watermarks are keyed by `user_id` alone, not `(user_id, watchlist_id)`. There is
+no watchlist entity yet, so a `watchlist_id` column would hold a placeholder
+constant in every row — a shape that looks like a decision but records nothing.
+The key widens in the migration that introduces watchlists, which is a small
+change against a table nothing else references yet.
+
 ## Explicitly deferred
 
 Deferred means *"we have a place to put it, and we are not building it now."*

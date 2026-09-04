@@ -3,10 +3,12 @@ import { instrumentId } from '../market/instrument.js';
 import { rupees } from '../market/money.js';
 import type { MeaningfulMarketEvent } from '../market/event.js';
 import { append, emptySequence } from '../market/log.js';
+import { sequentialIds } from '../market/event-id.js';
 import { hasUnread, joiningAt, markRead, newReader, unreadFor } from './watermark.js';
 import { userId } from './user.js';
 
 const ACME = instrumentId('ACME');
+const ids = sequentialIds();
 
 function event(at: number): MeaningfulMarketEvent {
   return {
@@ -19,7 +21,7 @@ function event(at: number): MeaningfulMarketEvent {
   };
 }
 
-const log = append(emptySequence, [event(1), event(2), event(3)]);
+const log = append(emptySequence, [event(1), event(2), event(3)], ids);
 
 describe('read watermark', () => {
   it('owes the whole log to a reader who has seen nothing', () => {
@@ -35,7 +37,7 @@ describe('read watermark', () => {
 
   it('surfaces only what arrived after the last read', () => {
     const alice = markRead(newReader(userId('alice')), log);
-    const grown = append(log, [event(4), event(5)]);
+    const grown = append(log, [event(4), event(5)], ids);
     expect(unreadFor(alice, grown).map((r) => r.sequence)).toEqual([4, 5]);
   });
 
@@ -50,7 +52,7 @@ describe('read watermark', () => {
 
   it('never moves backwards against a stale log', () => {
     const alice = markRead(newReader(userId('alice')), log);
-    const stale = append(emptySequence, [event(1)]);
+    const stale = append(emptySequence, [event(1)], ids);
     expect(markRead(alice, stale)).toBe(alice);
   });
 
@@ -94,7 +96,7 @@ describe('I4: users consume history independently', () => {
   it('lets a late joiner and an away user see different things at the same instant', () => {
     const away = newReader(userId('away'));
     const late = joiningAt(userId('late'), log);
-    const grown = append(log, [event(4)]);
+    const grown = append(log, [event(4)], ids);
 
     // Same log, same moment, different answers. This is the product.
     expect(unreadFor(away, grown).map((r) => r.sequence)).toEqual([1, 2, 3, 4]);

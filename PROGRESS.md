@@ -14,15 +14,15 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 2 — domain model |
+| **Iteration** | 3 — persistence |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 59 passing, 9 files |
+| **Tests** | 78 passing, 11 files |
 | **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
-| **Market features** | Domain core complete and tested. Nothing persisted, no API, no UI. |
+| **Market features** | Domain core complete and durably persisted. No API, no UI. |
 
-**Next up:** Iteration 3 — persistence for the event log and watermarks. Scope
-and constraints are recorded in [CLAUDE.md](CLAUDE.md).
+**Next up:** Iteration 4 — attention feed API and the "Since you last checked"
+screen. Scope and constraints are recorded in [CLAUDE.md](CLAUDE.md).
 
 ---
 
@@ -278,3 +278,86 @@ rather than left to be discovered.
 - The 5% default threshold is legible for tests, not calibrated against real
   market behaviour.
 - Still no CI; add when a remote exists.
+
+---
+
+## Iteration 3 — Persistence
+
+**Date:** 2026-09-04
+**Goal:** Give the Phase 2 domain a durable home without changing its
+behaviour. Explicitly *not* to expose it over HTTP or render it.
+
+### Pre-work: two decisions locked before building
+
+1. **Identity is not ordering.** `RecordedMarketEvent` now carries an `eventId`
+   (identity — stable, unique, meaningful outside this log) alongside `sequence`
+   (position — what a watermark points at). An auto-increment key supplies both
+   and thereby hides the distinction. Ids come from an `EventIdSource`, a port
+   justified under §2.3 by two genuine implementations: `uuidEventIds` in the
+   server, `sequentialIds()` for deterministic tests. The domain cannot generate
+   them itself without randomness, which would break I3.
+
+2. **Event semantics are now a documented contract.** `MeaningfulMarketEvent`
+   states that it records a **threshold-crossing move measured from the active
+   anchor** — explicitly not "the full move" of a price run, with the 100→94→91
+   example written into the type's doc comment. `fromPrice` and `toPrice` each
+   document what they mean for a follow-on event, where `fromPrice` is the
+   trough a recovery began from.
+
+### Built
+
+| File | Contents |
+| --- | --- |
+| `db/migrations/002_market_events.sql` | `market_events`, `user_read_watermarks`, indexes, immutability triggers |
+| `modules/market/event-store.ts` | `append`, `readAfter`, `head` — and nothing else |
+| `modules/attention/watermark-store.ts` | `get`, `advanceTo` |
+| `src/ids.ts` | `uuidEventIds`, the production `EventIdSource` |
+| `domain/market/event-id.ts` | `EventId`, `EventIdSource`, `sequentialIds` |
+
+### Decisions
+
+| Decision | Reasoning |
+| --- | --- |
+| Events stored once; watermarks reference a position | Fan-out on write multiplies storage by user count and turns "what did I miss" into a question about a private queue instead of shared history. |
+| `INTEGER PRIMARY KEY AUTOINCREMENT` | A sequence value is never reused even in principle. A watermark at 41 must not come to mean a different event tomorrow. |
+| Append-only enforced by DB triggers **and** API shape | An intent expressed only in an API is one `sqlite3` session away from violation. I2 is load-bearing; it gets two guards. |
+| Watermark monotonicity in SQL via `MAX(excluded, existing)` | Read-then-write in application code leaves a race between the read and the write. The statement leaves none. |
+| `magnitude_bps INTEGER`, not `movement_percent REAL` | *Deviation from the sketched schema.* A REAL percentage reintroduces at the storage boundary the float imprecision the domain types exist to prevent, and lets a stored event disagree with the event that produced it. |
+| `occurred_at INTEGER`, not TEXT | *Deviation from the sketched schema.* Epoch ms, matching the domain `Timestamp` and the existing `applied_at`. Text timestamps invite zone and format ambiguity. |
+| Watermarks keyed by `user_id` alone | *Deviation from the sketched schema, flagged for review.* There is no watchlist entity yet, so `watchlist_id` would be a placeholder constant in every row — a shape that looks like a decision but records nothing. The key widens in the migration that introduces watchlists, against a table nothing else references. |
+| No repository interface or port | One implementation exists. An abstraction over it would be indirection with nothing on the other side (§2.3). |
+
+### Verified
+
+All five acceptance criteria have named tests.
+
+| AC | Proved by |
+| --- | --- |
+| **AC1** golden scenario survives restart | A fixture runs as a **real child OS process**, writes the events, and exits. The test then opens the same file and recovers them — including the ₹100 → ₹91 decline with the price back at ₹100. |
+| **AC2** sequence survives restart | Numbering continues at 3 after a restart; `sqlite_sequence` confirms the high-water mark is remembered, not recomputed. |
+| **AC3** append-only survives persistence | The store's key set is exactly `append`, `head`, `readAfter`; direct `UPDATE` and `DELETE` both throw `/append-only/`; a duplicate `event_id` is rejected rather than double-recorded. |
+| **AC4** independent watermarks | Two users hold different positions over one log; four readers and two events produce 4 watermark rows and 2 event rows, not 8. |
+| **AC5** monotonic watermark | Writing 15 after 20 leaves 20; interleaved `[5,3,9,1,7,2]` settles at 9. |
+
+- `npm run verify` → green: **78 tests in 11 files**, format, lint, typecheck, build.
+- **Mutation-tested again.** Removing `MAX()` from the upsert (2 failures),
+  neutering the immutability trigger (1), dropping `AUTOINCREMENT` (1), and
+  making the child process write nothing (2) each broke the matching AC. One
+  first-attempt mutation was faulty — it renamed a trigger without changing its
+  body, so nothing should have failed — and was corrected rather than reported
+  as a passing result.
+
+### Course correction
+
+The smoke test asserted the applied migration list as a hardcoded
+`[{ name: '001_init.sql' }]`, so adding `002` broke it. Rather than appending
+the new name — which trains everyone to edit that line without reading it — the
+test now compares `schema_migrations` against the migrations actually on disk.
+That is the invariant worth asserting, and it will not need editing again.
+
+### Open items carried forward
+
+- Nothing is exposed over HTTP; the stores are used only by tests. Iteration 4.
+- Significance *ranking* still unbuilt — it belongs with the feed.
+- `watchlist_id` deferred, as above. One migration when watchlists exist.
+- Still no CI.
