@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Engineering notes
 
-Working agreement for AI agents on this repository. Read this before making any
+Working agreement for anyone working on this repository. Read this before making any
 change. **Update it at the end of every iteration** (see [Iteration log](#iteration-log)).
 
 ---
@@ -372,7 +372,7 @@ needs to know that the diff does not say.
 ### 2026-09-05 — Phase 13: second audit, and eleven fixes
 
 A break-it pass done by **running** the software rather than reading it, and the
-remediation that followed. Full write-up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md);
+remediation that followed. Full write-up in [AUDIT_2.md](AUDIT_2.md);
 this entry records what a future agent needs that the diff does not say.
 
 **The headline bug was in the newest feature.** `classifySignal` had no bound on
@@ -409,7 +409,7 @@ trailing run of NIFTY events becomes permanently unreachable. Test `F6b` pins it
 default story, the round-trip wording, the traditional-view copy). Two more were
 *strengthened* rather than adjusted: `AC3` now asserts "no mutating operation"
 directly instead of relying on an enumeration, and the round-trip block now
-covers all three cases. CLAUDE2AUDIT.md §3 justifies each one individually,
+covers all three cases. AUDIT_2.md §3 justifies each one individually,
 because §2.8 requires that.
 
 **A finding I got wrong, corrected.** I first reported "zero aria-live regions";

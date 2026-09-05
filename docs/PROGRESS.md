@@ -27,7 +27,7 @@ it every iteration, and several iterations did not.)*
 
 **Next up:** nothing in the code. What remains is not engineering — confirm the
 push actually landed, and rehearse the demo once. Two findings are open by
-choice and written up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md) §4: there is no auth,
+choice and written up in [AUDIT_2.md](AUDIT_2.md) §4: there is no auth,
 and the feed's server-side read is still unbounded even though its payload is
 not.
 
@@ -136,7 +136,7 @@ not mention.
   (`format:check && lint && typecheck && test && build`).
 - **Root `tsconfig.json`** so repo-level config files belong to a TS project,
   which `projectService` requires.
-- **`CLAUDE.md`** — the working agreement for AI agents on this repo: scope
+- **`ENGINEERING_NOTES.md`** — the working agreement for this repo: scope
   discipline, the dependency rule, the abstraction rule, settled decisions that
   must not be re-litigated, and an iteration log.
 
@@ -217,7 +217,7 @@ Before starting, two concerns raised in review were checked rather than assumed:
    resolved path is identical whether `loadConfig` runs from the repo root or
    from `packages/server`.
 
-Two rules were added to `CLAUDE.md` before building under it: **§2.8** never
+Two rules were added to `ENGINEERING_NOTES.md` before building under it: **§2.8** never
 weaken a test, lint rule, or type to make the gate pass, and **§2.9** every
 feature must name the product invariant it upholds.
 
@@ -1118,7 +1118,7 @@ A break-it pass done by **running** the software rather than reading it: the
 gate, the live app at two widths, the API under malformed / oversized / hostile
 / cross-user input, and the read endpoints benchmarked against synthetic logs of
 1,000 / 5,000 / 20,000 events. Then every finding fixable inside the existing
-design was fixed. Full write-up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md).
+design was fixed. Full write-up in [AUDIT_2.md](AUDIT_2.md).
 
 ### Fixed
 

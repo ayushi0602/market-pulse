@@ -1,4 +1,4 @@
-# CLAUDE2AUDIT
+# Second audit
 
 A second audit, and the remediation that followed it.
 
@@ -342,7 +342,7 @@ moving. New block `F6b`, with a test for exactly that case.
 
 ## 3. Changes made to existing tests, and why
 
-Six existing tests changed. §2.8 of `CLAUDE.md` forbids changing an expectation
+Six existing tests changed. §2.8 of `ENGINEERING_NOTES.md` forbids changing an expectation
 to match the code, so each is justified individually.
 
 | Test | Change | Justification |

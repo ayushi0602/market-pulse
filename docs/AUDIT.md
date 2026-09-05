@@ -443,7 +443,7 @@ If one thing is carried forward from this audit, it is these:
    merely happens to hold. The four in §3.7 are the ones to protect.
 3. **Look at the screens after changing them.** Every UI defect in this
    repository's history — five responsive, two hierarchy, two copy — was found by
-   screenshot, not by test. The CDP recipe is in `CLAUDE.md` and needs no
+   screenshot, not by test. The CDP recipe is in `ENGINEERING_NOTES.md` and needs no
    dependency.
 4. **Never weaken the gate to make it pass.** When lint and `tsc` disagreed over
    a cast, the answer was a type argument that satisfied both, not a disabled
