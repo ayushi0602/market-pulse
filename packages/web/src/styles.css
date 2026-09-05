@@ -2,7 +2,7 @@
  * Visual language: same palette, type rhythm and chip pattern as Groww's
  * production app, applied to Market Pulse's own screens. Every hex value below
  * was pulled from Groww's live CSS bundles, not approximated -- see the
- * iteration log in CLAUDE.md for how. Structure and class names are unchanged
+ * iteration log in docs/ENGINEERING_NOTES.md for how. Structure and class names are unchanged
  * from the previous pass; only tokens, radius, shadow, weight and one new
  * component (the pill) are new.
  */
