@@ -272,3 +272,80 @@ describe('snapshots record knowledge, not history', () => {
     expect(tcs?.observedAt).toBe(START + 10 * 60_000);
   });
 });
+
+describe('W6: the benchmark is not something a watchlist can follow', () => {
+  it('refuses to add the benchmark, and writes nothing', async () => {
+    const before = await watchlistFor('alice');
+
+    const response = await request(app)
+      .post('/api/watchlist')
+      .send({ userId: 'alice', instrumentId: 'NIFTY' })
+      .expect(400);
+
+    expect(String(response.body.error)).toContain('benchmark');
+
+    // The rejection is not merely a status code: nothing was written.
+    const after = await watchlistFor('alice');
+    expect(after.rows.map((r) => r.instrumentId)).toEqual(before.rows.map((r) => r.instrumentId));
+    expect(after.rows.some((r) => r.instrumentId === 'NIFTY')).toBe(false);
+
+    const stored = createWatchlistStore(db, clock).list(userId('alice'));
+    expect(stored.some((entry) => entry.instrumentId === 'NIFTY')).toBe(false);
+  });
+
+  it('applies the same trimming the store would, so padding does not slip past', async () => {
+    // `instrumentId()` trims, so "  NIFTY  " is the benchmark by the time
+    // anything is written. The check runs against the normalized value, not
+    // the raw string.
+    await request(app)
+      .post('/api/watchlist')
+      .send({ userId: 'alice', instrumentId: '  NIFTY  ' })
+      .expect(400);
+
+    const stored = createWatchlistStore(db, clock).list(userId('alice'));
+    expect(stored.some((entry) => entry.instrumentId.trim() === 'NIFTY')).toBe(false);
+  });
+
+  it('leaves market history completely untouched when an add is refused', () => {
+    const before = db.prepare('SELECT * FROM market_events ORDER BY sequence').all();
+    return request(app)
+      .post('/api/watchlist')
+      .send({ userId: 'alice', instrumentId: 'NIFTY' })
+      .expect(400)
+      .then(() => {
+        expect(db.prepare('SELECT * FROM market_events ORDER BY sequence').all()).toEqual(before);
+      });
+  });
+
+  it('still lets every ordinary instrument be added', async () => {
+    await request(app)
+      .post('/api/watchlist')
+      .send({ userId: 'alice', instrumentId: 'INFY' })
+      .expect(201);
+
+    const after = await watchlistFor('alice');
+    expect(after.rows.some((r) => r.instrumentId === 'INFY')).toBe(true);
+  });
+
+  it('treats a differently-cased symbol as a different instrument, not the benchmark', async () => {
+    // Nothing in this system folds case -- `instrumentId()` only trims, and
+    // the event, snapshot and watchlist stores all key by the exact string.
+    // So "nifty" is a genuinely different instrument here, with none of the
+    // real benchmark's data behind it. It is accepted, and it is inert: never
+    // observed, no events, no way to reach NIFTY's history through it. Making
+    // the check case-insensitive would be the only case-folding in the
+    // system, which would be a new normalization rule rather than enforcing
+    // this one.
+    await request(app)
+      .post('/api/watchlist')
+      .send({ userId: 'alice', instrumentId: 'nifty' })
+      .expect(201);
+
+    const after = await watchlistFor('alice');
+    const row = after.rows.find((r) => r.instrumentId === 'nifty');
+    expect(row).toBeDefined();
+    expect(row?.latestPrice).toBeUndefined();
+    expect(row?.meaningfulChanges).toBe(0);
+    expect(row?.attention).toBe('quiet');
+  });
+});

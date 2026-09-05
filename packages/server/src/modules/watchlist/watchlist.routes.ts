@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { WatchlistResponse } from '@market-pulse/domain';
 import { buildWatchlist, instrumentId, userId } from '@market-pulse/domain';
+import { BENCHMARK_SYMBOL } from '../market/catalogue.js';
 import type { EventStore } from '../market/event-store.js';
 import type { SnapshotStore } from '../market/snapshot-store.js';
 import type { WatermarkStore } from '../attention/watermark-store.js';
@@ -78,6 +79,23 @@ export function createWatchlistRoutes({
     const instrument = requireUser(rawInstrument);
     if (user === undefined || instrument === undefined) {
       res.status(400).json({ error: 'userId and instrumentId are required' });
+      return;
+    }
+
+    // Same normalization the store would apply (trim), checked before anything
+    // is written -- not after, and not left to the UI. The benchmark is market
+    // context computed *from* the shared event log, not something a watchlist
+    // entry can point at: it is tracked and simulated like any instrument
+    // (`catalogue.ts`), but it is nobody's to follow. Case is deliberately not
+    // folded here, because nothing else in the system folds it either --
+    // `instrumentId()` only trims, and the event, snapshot and watchlist
+    // stores all key by the exact string. A symbol like "nifty" is therefore a
+    // genuinely different, harmless, dataless instrument to this system, not a
+    // way to reach the real benchmark's history under a different case.
+    if (instrumentId(instrument) === instrumentId(BENCHMARK_SYMBOL)) {
+      res.status(400).json({
+        error: `${BENCHMARK_SYMBOL} is a market benchmark, not something a watchlist can follow`,
+      });
       return;
     }
 

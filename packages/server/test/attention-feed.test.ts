@@ -169,40 +169,52 @@ describe('F3: acknowledging a stale position cannot move backwards', () => {
 });
 
 describe('F6: acknowledging cannot advance past events that exist', () => {
-  it('clamps a throughSequence beyond the log head, rather than hiding events that have not been written yet', async () => {
+  it('refuses a throughSequence beyond the log head rather than clamping it', async () => {
     // beforeEach seeds exactly 3 events. A client claiming to have read up to
-    // 999 -- a bug, a bad client, or a forged request -- must not be able to
-    // pre-emptively mark the next several hundred future events as read the
-    // instant they are appended. That would silently defeat F4 for anyone who
-    // sends an inflated number, and there is nothing in the wire format that
-    // stops a client from sending one.
+    // 999 -- a bug, a forged request, or a tab still holding a feed from a
+    // database that has since been reset -- must not be able to move the
+    // watermark at all. Clamping to the head would advance it over events
+    // that were never shown, which is the failure F1 exists to prevent, made
+    // permanent by watermarks only moving forward.
     const response = await request(app)
       .post('/api/attention-feed/ack')
       .send({ userId: 'alice', throughSequence: 999 })
-      .expect(200);
+      .expect(400);
 
-    expect(response.body).toEqual({ userId: 'alice', lastSeenSequence: 3 });
+    expect(String(response.body.error)).toContain('beyond the log head');
 
-    // The proof that matters: a real, not-yet-existing event arriving later
-    // is still shown, not silently treated as already read.
-    const store = createEventStore(db, sequentialIds('later'), clock);
-    store.append(observeTicks(ticks(RELIANCE, [100, 120])).events);
-
-    expect((await feed('alice')).events).toHaveLength(1);
+    // The watermark is untouched, so everything the user has not read is
+    // still waiting for them.
+    const watermarks = createWatermarkStore(db, clock);
+    expect(watermarks.get(userId('alice')).lastSeenSequence).toBe(0);
+    expect((await feed('alice')).events).toHaveLength(3);
   });
 
-  it('still clamps correctly when the inflated ack arrives after a legitimate one', async () => {
+  it('leaves an existing watermark exactly where it was when a later ack overshoots', async () => {
     await request(app)
       .post('/api/attention-feed/ack')
       .send({ userId: 'alice', throughSequence: 2 })
       .expect(200);
 
-    const response = await request(app)
+    await request(app)
       .post('/api/attention-feed/ack')
       .send({ userId: 'alice', throughSequence: 50 })
+      .expect(400);
+
+    // Not advanced to 3, not reset to 0 -- unchanged at the last legitimate
+    // acknowledgement.
+    const watermarks = createWatermarkStore(db, clock);
+    expect(watermarks.get(userId('alice')).lastSeenSequence).toBe(2);
+  });
+
+  it('still accepts acknowledging exactly the head, which is the normal path', async () => {
+    const response = await request(app)
+      .post('/api/attention-feed/ack')
+      .send({ userId: 'alice', throughSequence: 3 })
       .expect(200);
 
     expect(response.body).toEqual({ userId: 'alice', lastSeenSequence: 3 });
+    expect((await feed('alice')).events).toHaveLength(0);
   });
 });
 

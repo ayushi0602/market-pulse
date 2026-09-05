@@ -1043,3 +1043,38 @@ direct SVG attribute inspection, RELIANCE's Market-wide/Outlier tags
 confirmed exactly as designed, NIFTY confirmed absent from every watchlist and
 feed card while still a valid Replay target, the golden scenario's Play-through
 re-verified end to end.
+
+---
+
+## Iteration 12b — two-invariant patch (W6, and F6 corrected)
+
+Closing the two open items from the Phase 12 audit. No features, no refactor.
+
+**W6 — the benchmark cannot be followed.** `POST /watchlist` refuses `NIFTY`
+before anything is written, enforced in the route rather than the store: the
+stores stay generic, and this mirrors how `attention.routes.ts` already knows
+the benchmark constant while `EventStore` does not. Pushing it into
+`WatchlistStore` would have been the "generic benchmark subsystem" this patch
+was explicitly told not to build.
+
+The check compares the *normalized* value, so `"  NIFTY  "` is caught (the
+existing `instrumentId()` trim). It is deliberately case-sensitive: nothing in
+this system folds case, so `"nifty"` is a genuinely different, inert
+instrument with no path to the real benchmark's data — asserted by a test,
+rather than inventing the system's only case-folding rule to reject it.
+
+**F6 corrected — refuse rather than clamp.** Iteration 12 clamped an
+overshooting `throughSequence` to the head. That was the wrong half of a false
+symmetry: a *stale* ack is clamped and answered 200 because it consumes
+nothing (F3's actual rationale), but an ack *beyond the head* would advance the
+watermark over events never shown — the failure F1 exists to prevent, made
+permanent by monotonicity. The route already 400s other invalid
+`throughSequence` values, and the client already ships "Your position is
+unchanged", which is only true under refusal. Valid acks, F3, and the
+monotonic `MAX` semantics are all untouched.
+
+Five mutations run, all caught: NIFTY guard removed, raw-string comparison
+(trim bypass), F6 guard removed, F6 reverted to clamping, and `>=` instead of
+`>` (which breaks every ordinary ack).
+
+Gate: `npm run verify` green — **261 tests, 22 files**.

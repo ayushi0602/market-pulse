@@ -145,9 +145,10 @@ ARCHITECTURE.md records how each one holds:
 | Set | Covers |
 | --- | --- |
 | **F1–F5** | The feed: reading never acknowledges, acknowledging is monotonic, the feed is scoped to the watermark, ranking is deterministic |
-| **F6** | Acknowledging cannot advance past events that exist — a client-supplied `throughSequence` is clamped to the real log head before being stored |
+| **F6** | Acknowledging cannot advance past events that exist — a `throughSequence` beyond the log head is **refused**, leaving the watermark untouched |
 | **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
 | **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
+| **W6** | The benchmark cannot be added to a watchlist — refused at the route, before anything is written |
 | **SC1** | Signal context: a benchmark event after the one being classified cannot affect its verdict — enforced inside `classifySignal` itself, not by a caller convention |
 
 The simulator has its own block in `packages/server/test/simulation.test.ts`. It
@@ -367,6 +368,61 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-05 — Phase 12b: two-invariant patch (W6, and F6 corrected)
+
+Closing the two items Phase 12 left open. No features, no refactor.
+
+**W6 — the benchmark cannot be followed.** `POST /watchlist` now refuses
+`NIFTY` before anything is written. Enforced in the *route*, deliberately not
+in `WatchlistStore`: the stores stay generic and key by exact string, and
+route-level is where every other business rule about this endpoint already
+lives. This mirrors `attention.routes.ts`, which likewise knows the benchmark
+constant while `EventStore` does not. Adding benchmark-awareness to the store
+would have been the "generic benchmark subsystem" this patch was told not to
+build.
+
+**On case: the check is case-sensitive, on purpose.** `instrumentId()` only
+trims; nothing in this system folds case, and the event, snapshot and
+watchlist stores all key by the exact string. So `"nifty"` is a genuinely
+*different* instrument here — inert, never observed, no events, and with no
+path to the real benchmark's history. A test asserts exactly that, rather than
+asserting a rejection that would have required inventing the system's only
+case-folding rule. The guard compares the *normalized* value
+(`instrumentId(instrument)`), so `"  NIFTY  "` is still caught — a mutation
+that compares the raw string instead fails that test.
+
+**F6 was wrong and is now corrected: refuse, do not clamp.** Phase 12 clamped
+`throughSequence > head` to the head. Re-reading the contract showed that was
+the wrong half of a false symmetry:
+
+- A *stale* ack (below the watermark) is clamped by `MAX()` and answered 200 —
+  right, because it **consumes nothing**. That is F3's whole rationale: "a
+  no-op rather than an error."
+- An ack *above the head* is the opposite. Clamping it advances the watermark
+  over events that were never shown — the exact failure F1 exists to prevent,
+  made permanent because watermarks only move forward. F3's rationale does not
+  transfer, because it stops being a no-op.
+
+Two more things settled it, both pre-existing rather than preference: the route
+already answers 400 for other invalid `throughSequence` values (non-integer,
+negative), and a value beyond the head is the same category of "not a valid
+position in this log". And the client already ships the copy *"Nothing was
+marked as read. Your position is unchanged."* — true under refusal, a lie under
+clamping. `head()` only grows, so a legitimately-obtained value can never
+exceed a later head; reaching this branch means a buggy client, a forged
+request, or a tab holding a feed from a database since reset — and in that last,
+genuinely reachable case, refusing is what leaves the user's unread events
+intact.
+
+Five mutations run against the two invariants, all caught: removing the NIFTY
+guard, comparing the raw string instead of the normalized one, removing the F6
+guard, reverting F6 to clamping, and an off-by-one (`>=` instead of `>`) that
+would have broken every ordinary acknowledgement.
+
+Gate: `npm run verify` green — **261 tests, 22 files** (+6). Live E2E
+re-verified.
+
 
 ### 2026-09-05 — Phase 12: full-system regression, and one real bug (F6)
 

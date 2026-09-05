@@ -132,18 +132,37 @@ export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDep
       return;
     }
 
-    // Clamped to the real head, not trusted as given (F6). Nothing in the wire
-    // format stops a client -- buggy or otherwise -- from sending a number far
-    // beyond what has actually been recorded. Storing it unclamped would mark
-    // every future event up to that number as already read the instant it is
-    // appended, which is a silent, much larger version of the exact bug F1
-    // exists to prevent: events becoming unreadable without ever being shown.
-    const boundedThrough = Math.min(throughSequence, events.head());
+    /*
+     * A position beyond the log is refused, not clamped (F6).
+     *
+     * The low side and the high side look symmetrical and are not. A *stale*
+     * acknowledgement -- below the watermark -- is clamped to a no-op by
+     * `MAX()` in SQL and answered 200, and that is right precisely because it
+     * consumes nothing (F3). A position *above* the head is the opposite:
+     * clamping it to the head would advance the watermark over events that
+     * were never shown, which is the exact failure F1 exists to prevent, made
+     * permanent by the fact that watermarks only move forward.
+     *
+     * `head()` only grows, so a value obtained from any real read can never
+     * exceed a later head. Getting here means a buggy client, a forged
+     * request, or a client still holding a feed from a database that has since
+     * been reset -- and in that last, genuinely reachable case, refusing is
+     * what leaves the user's unread events intact for them to actually see.
+     * It is also what makes the client's existing message ("Nothing was marked
+     * as read. Your position is unchanged.") true rather than a lie.
+     */
+    const head = events.head();
+    if (throughSequence > head) {
+      res.status(400).json({
+        error: `throughSequence ${throughSequence} is beyond the log head of ${head}`,
+      });
+      return;
+    }
 
     // The store clamps to MAX(existing, incoming) in SQL, so a stale
     // acknowledgement is a no-op rather than an error (F3). Returning the stored
     // value means the client always learns where it actually ended up.
-    const stored = watermarks.advanceTo(userId(rawUser), boundedThrough);
+    const stored = watermarks.advanceTo(userId(rawUser), throughSequence);
     const response: AcknowledgeResponse = {
       userId: stored.userId,
       lastSeenSequence: stored.lastSeenSequence,

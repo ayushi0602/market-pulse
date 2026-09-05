@@ -262,6 +262,7 @@ ever being shown.
 | **F3** | A stale acknowledgement cannot move backwards. | `attention-feed.test.ts` |
 | **F4** | The feed contains only events after the watermark. | `attention-feed.test.ts` |
 | **F5** | Ranking is deterministic. | `attention/ranking.test.ts` |
+| **F6** | An acknowledgement beyond the log head is refused, not clamped. | `attention-feed.test.ts` |
 
 ### Ranking
 
