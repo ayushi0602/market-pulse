@@ -32,3 +32,18 @@ export interface MarketStatusResponse {
    */
   readonly sequence: number;
 }
+
+/**
+ * The instruments this market trades.
+ *
+ * Exists so the client can offer them rather than asking someone to guess a
+ * symbol. It is not a restriction: a watchlist may still follow something
+ * absent from this list, and that row honestly reads "Never observed".
+ */
+export interface InstrumentCatalogueResponse {
+  readonly instruments: readonly {
+    readonly instrumentId: string;
+    /** Market context. Listed here, but refused by `POST /watchlist`. */
+    readonly isBenchmark: boolean;
+  }[];
+}

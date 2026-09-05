@@ -14,11 +14,25 @@
   --border-soft: #f0f0f2;
   --text: #44475b; /* Groww gray900 -- a soft slate, not black */
   --text-strong: #121212;
-  --muted: #767a8c;
-  --decline: #ed5533; /* Groww red9/red500 -- warm red-orange, not pure red */
+  /*
+   * Text colours carry contrast; fills carry the brand.
+   *
+   * Measured against --bg (#f8f8f8), the original text tokens failed WCAG AA
+   * (4.5:1 for normal text): --advance was 2.70, --decline 3.32, --muted 4.01.
+   * --advance is the worst of them and the most load-bearing -- it is the green
+   * "● 2 meaningful changes" line, the primary signal on the watchlist.
+   *
+   * Groww's own green is genuinely low-contrast as *type*, which is why the
+   * split below exists rather than a wholesale palette change: --advance-fill
+   * stays the brand green for pills, dots and tints, and --advance is a deeper
+   * shade of the same hue used only for text. Ratios are noted so a future
+   * change has to face the number rather than rediscover it.
+   */
+  --muted: #666b7a; /* 5.01:1 on --bg */
+  --decline: #cc3f22; /* Groww red9, deepened for type -- 4.60:1 */
   --decline-soft: #fae9e5; /* Groww red100 */
-  --advance: #04ad83; /* Groww positive-hover -- a shade deeper than the fill, for text */
-  --advance-fill: #04b488; /* Groww green9 -- the brand green itself */
+  --advance: #037a5e; /* Groww green, deepened for type -- 5.01:1 */
+  --advance-fill: #04b488; /* Groww green9 -- the brand green itself, for fills */
   --advance-soft: #e9faf3; /* Groww green2 */
   --accent: #04b488;
   --accent-ink: #ffffff;
@@ -1127,6 +1141,26 @@ button.link.quiet:hover {
   margin: 0 0 1.25rem;
   font-size: 0.875rem;
   color: var(--muted);
+}
+
+/*
+ * "Showing the 50 largest of 3,412 changes."
+ *
+ * Deliberately quieter than .arrived: this is a standing fact about the
+ * response, not something that just happened. It still needs to be read, so it
+ * is not hidden in a footnote at the bottom of the list it describes.
+ */
+.truncation-note {
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+  padding: 0.625rem 0.875rem;
+  margin: 0 0 1.25rem;
+  font-size: 0.875rem;
+}
+
+.truncation-note strong {
+  color: var(--text);
+  font-weight: 500;
 }
 
 /* ---------- replay: which story ---------- */

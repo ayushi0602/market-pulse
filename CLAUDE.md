@@ -369,6 +369,72 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
 
+### 2026-09-05 — Phase 13: second audit, and eleven fixes
+
+A break-it pass done by **running** the software rather than reading it, and the
+remediation that followed. Full write-up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md);
+this entry records what a future agent needs that the diff does not say.
+
+**The headline bug was in the newest feature.** `classifySignal` had no bound on
+how old its benchmark reference could be, so a NIFTY move classified stock moves
+as `market-wide` for as long as the index stayed still — measured live at 72.9
+minutes. The general lesson is the one worth keeping: **SC1 proved a benchmark
+from the future cannot leak in, and nobody asked the mirror question about the
+past.** Every fixture in the file sat at `T0 - 1`, so the suite was structurally
+incapable of seeing it. When a test block proves a bound in one direction, ask
+what the other direction would look like.
+
+**A regression that only existed because two screens were never compared.**
+The watchlist showed the live snapshot and the feed showed the last event's
+price; with the simulator on they diverged by up to 2.14%, and RELIANCE said
+"but the price came back" beside a price it had not come back to. Both screens
+had been reasoned about carefully — separately. The rule "never let the UI claim
+more than the data model knows" had only ever been applied *within* a screen.
+Phase 9 made two previously-identical quantities diverge and nothing re-checked
+the pairs. **After adding a live data source, re-read every screen that displays
+the thing it made move.**
+
+**The feed cap has a trap in it.** Events are ranked by magnitude, so a page is
+not a prefix of the log and no sequence describes "the 50 shown". A single
+watermark cannot express a non-prefix acknowledgement, and acking only the page
+would strand the rest forever. It works because the button already says "Mark
+all as read" and the summary counts deliberately stay uncapped. Do not
+"simplify" either of those.
+
+**`throughSequence` now comes from the unfiltered read**, not from a second
+`head()` call. The subtlety: derive it from the *benchmark-filtered* list and a
+trailing run of NIFTY events becomes permanently unreachable. Test `F6b` pins it.
+
+**Three tests changed expectations, all deliberate behaviour changes** (replay's
+default story, the round-trip wording, the traditional-view copy). Two more were
+*strengthened* rather than adjusted: `AC3` now asserts "no mutating operation"
+directly instead of relying on an enumeration, and the round-trip block now
+covers all three cases. CLAUDE2AUDIT.md §3 justifies each one individually,
+because §2.8 requires that.
+
+**A finding I got wrong, corrected.** I first reported "zero aria-live regions";
+the arrival banner already used `role="status"`. What actually lacked
+announcement was the market-status strip and the attention count. Live regions
+were added to those two lines only — not to the prices or the ticking clock,
+because a live region over everything that moves is unusable.
+
+**Known and left open:** the feed's *payload* is bounded (19 KB at any log size)
+but its server-side *read* is not — the summary counts must cover the whole
+window, so latency still grows with the log. Fixing it means a SQL aggregate.
+And there is still no auth; what changed is only that the README's framing of it
+understates the exposure, which is cross-user *writes*, not just reads.
+
+**Also added:** `PITCH.md` (a required submission deliverable that did not
+exist), `.github/workflows/verify.yml` (the gate had never been run by anything
+but a person), `GET /api/instruments` plus a datalist, a symbol shape check, an
+Express error handler, and a complete ARIA tabs pattern.
+
+Gate: `npm run verify` green — **315 tests, 25 files** (+49). Benchmarked before
+and after: watchlist latency went from linear in log size (3.2 / 9.1 / 26.4 ms)
+to flat (1.9 / 1.1 / 1.7 ms); feed payload from 4,405 KB to 19 KB at a
+20,000-event log. Re-verified live, not only in tests.
+
+
 ### 2026-09-05 — Phase 12c: W6 made case-insensitive
 
 A correction to my own call in 12b, on the user's reaffirmation.

@@ -13,7 +13,19 @@ import type { Database } from '../../db/connection.js';
 export interface SnapshotStore {
   record(instrument: InstrumentId, price: number, observedAt: number): InstrumentSnapshot;
   list(): readonly InstrumentSnapshot[];
+  /**
+   * Only the snapshots asked for.
+   *
+   * The watchlist read used `list()` and discarded the rest, so rendering one
+   * user's rows scanned every instrument the system has ever observed. Empty in
+   * means empty out -- an empty `IN ()` is not valid SQL, and "the snapshots for
+   * no instruments" is genuinely none of them.
+   */
+  listFor(instruments: readonly InstrumentId[]): readonly InstrumentSnapshot[];
 }
+
+/** Matches the event store's chunking, and for the same reason. */
+const MAX_BOUND_PARAMETERS = 900;
 
 interface SnapshotRow {
   readonly instrument_id: string;
@@ -61,6 +73,28 @@ export function createSnapshotStore(db: Database, clock: Clock): SnapshotStore {
 
     list() {
       return Object.freeze((selectAll.all() as unknown as SnapshotRow[]).map(toSnapshot));
+    },
+
+    listFor(instruments) {
+      if (instruments.length === 0) {
+        return Object.freeze([]);
+      }
+
+      const rows: SnapshotRow[] = [];
+      for (let start = 0; start < instruments.length; start += MAX_BOUND_PARAMETERS) {
+        const chunk = instruments.slice(start, start + MAX_BOUND_PARAMETERS);
+        const placeholders = chunk.map(() => '?').join(', ');
+        const statement = db.prepare(`
+          SELECT instrument_id, latest_price, observed_at
+          FROM instrument_snapshots
+          WHERE instrument_id IN (${placeholders})
+          ORDER BY instrument_id
+        `);
+        rows.push(...(statement.all(...chunk) as unknown as SnapshotRow[]));
+      }
+
+      rows.sort((a, b) => a.instrument_id.localeCompare(b.instrument_id));
+      return Object.freeze(rows.map(toSnapshot));
     },
   };
 }

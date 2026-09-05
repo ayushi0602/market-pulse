@@ -74,7 +74,17 @@ export function MarketStatus() {
     <div className={`status ${data.running ? 'status-running' : 'status-paused'}`}>
       <span className="dot" aria-hidden="true" />
 
-      <span className="status-label">
+      {/*
+        Announced, because pausing and resuming is a state change a reader acts
+        on and the only visible confirmation is this sentence rewriting itself.
+
+        Scoped deliberately to the label and not to `.status-facts` beside it:
+        that block carries a tick count and a timestamp that change every few
+        seconds, and a live region over them would read the clock aloud
+        indefinitely. A live region on everything that moves is not an
+        accessible page, it is an unusable one.
+      */}
+      <span className="status-label" aria-live="polite">
         {isStatic
           ? 'Static data — nothing is generating prices'
           : data.running

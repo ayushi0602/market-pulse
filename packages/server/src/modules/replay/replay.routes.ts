@@ -82,24 +82,16 @@ export function createReplayRoutes({ events }: ReplayRoutesDeps): Router {
    * watchlist would quietly make replay per-user again.
    */
   router.get('/replay/instruments', (_req, res) => {
-    const counts = new Map<string, { events: number; largestMoveBps: number }>();
-    for (const record of events.readAfter(0)) {
-      const existing = counts.get(record.event.instrumentId);
-      if (existing === undefined) {
-        counts.set(record.event.instrumentId, {
-          events: 1,
-          largestMoveBps: record.event.magnitudeBps,
-        });
-      } else {
-        existing.events += 1;
-        existing.largestMoveBps = Math.max(existing.largestMoveBps, record.event.magnitudeBps);
-      }
-    }
-
+    // Aggregated in SQL. This was a full `readAfter(0)` folded into a Map on
+    // every request -- the entire log turned into objects to produce one row
+    // per instrument, for a picker with a dozen entries in it.
     const body: ReplayCatalogueResponse = {
-      instruments: [...counts.entries()]
-        .map(([instrument, stats]) => ({ instrumentId: instrument, ...stats }))
-        .sort((a, b) => b.largestMoveBps - a.largestMoveBps),
+      instruments: events.storyCounts().map((story) => ({
+        instrumentId: story.instrumentId,
+        events: story.events,
+        largestMoveBps: story.largestMoveBps,
+        isBenchmark: story.instrumentId === BENCHMARK,
+      })),
     };
     res.json(body);
   });

@@ -2,7 +2,11 @@ export type { Clock, Timestamp } from './clock.js';
 export { fixedClock, systemClock } from './clock.js';
 
 export type { HealthResponse, ServiceStatus } from './contracts/system.js';
-export type { MarketSource, MarketStatusResponse } from './contracts/market.js';
+export type {
+  InstrumentCatalogueResponse,
+  MarketSource,
+  MarketStatusResponse,
+} from './contracts/market.js';
 export type {
   AcknowledgeRequest,
   AcknowledgeResponse,
@@ -28,7 +32,11 @@ export type { MarketTick } from './market/tick.js';
 export type { MarketDirection, MeaningfulMarketEvent } from './market/event.js';
 
 export type { SignalClassification } from './market/signal-context.js';
-export { classifySignal, OUTLIER_FACTOR } from './market/signal-context.js';
+export {
+  classifySignal,
+  MAX_BENCHMARK_REFERENCE_AGE_MS,
+  OUTLIER_FACTOR,
+} from './market/signal-context.js';
 
 export type { MarketState, Observation, SignificanceRule } from './market/significance.js';
 export { DEFAULT_RULE, initialState, observeTick, observeTicks } from './market/significance.js';

@@ -118,16 +118,44 @@ describe('the price is labelled as recorded, never live', () => {
 });
 
 describe('the round trip is distinguished from nothing happening', () => {
-  it('says the price came back rather than reporting a flat 0%', async () => {
+  it('reports a round trip as changes with a zero net, never as nothing', async () => {
     stubFetch(() => watchlist);
     render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
 
+    // The round trip: something happened, and the net across it was zero.
     const reliance = await screen.findByTestId('watchlist-RELIANCE');
     expect(reliance.textContent).toContain('2 meaningful changes');
-    expect(reliance.textContent).toContain('but the price came back');
+    expect(reliance.textContent).toContain('net 0.00%');
 
-    // A genuine move reports its size instead.
+    // A genuine move reports its size.
     expect(screen.getByTestId('watchlist-INFY').textContent).toContain('net -20.00%');
+
+    // And the quiet instrument says nothing happened, which is the other half
+    // of the distinction this block exists for: 0.00% and "no changes" must
+    // never render as the same statement.
+    const tcs = screen.getByTestId('watchlist-TCS');
+    expect(tcs.textContent).toContain('No meaningful changes');
+    expect(tcs.textContent).not.toContain('net');
+  });
+
+  it('scopes the net figure to the missed events, not to the price on the row', async () => {
+    /*
+     * The copy used to read "2 meaningful changes — but the price came back",
+     * printed beside the latest observation. With a market running those are
+     * different moments: RELIANCE said "the price came back" next to
+     * ₹2,814.51 while the events it described ended at ₹2,900. The row is
+     * allowed to say what the events did; it is not allowed to imply where the
+     * price is now.
+     */
+    stubFetch(() => ({
+      ...watchlist,
+      rows: [{ ...watchlist.rows[0], latestPrice: 281_451 }],
+    }));
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
+
+    const reliance = await screen.findByTestId('watchlist-RELIANCE');
+    expect(reliance.textContent).toContain('net 0.00% overall');
+    expect(reliance.textContent).not.toContain('came back');
   });
 });
 

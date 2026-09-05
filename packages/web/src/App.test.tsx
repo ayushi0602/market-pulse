@@ -29,6 +29,8 @@ const goldenFeed: AttentionFeedResponse = {
         latestPrice: 290_000,
         netChangeBps: 0,
         meaningfulChanges: 2,
+        observedPrice: undefined,
+        observedAt: undefined,
       },
     ],
   },
@@ -56,6 +58,7 @@ const goldenFeed: AttentionFeedResponse = {
       signalContext: undefined,
     },
   ],
+  eventLimit: 50,
 };
 
 const emptyFeed: AttentionFeedResponse = {
@@ -64,6 +67,7 @@ const emptyFeed: AttentionFeedResponse = {
   throughSequence: 2,
   summary: { meaningfulChanges: 0, instruments: [] },
   events: [],
+  eventLimit: 50,
 };
 
 const emptyWatchlist = { userId: 'demo', rows: [] };
@@ -151,9 +155,54 @@ describe('the comparison toggle', () => {
     // The whole argument in one screen: same events, 0.00%, and an admission.
     // No "+" on a flat change -- a sign would imply a direction there isn't one.
     expect(screen.getByText('0.00%')).toBeDefined();
-    expect(screen.getByText(/No change since your last check/)).toBeDefined();
+    // "across what you missed", not "since your last check": the comparison is
+    // scoped to the events in the unread window, and with a market running that
+    // is a different span from "now".
+    expect(screen.getByText(/No change across what you missed/)).toBeDefined();
     expect(screen.getByText(/cannot show them/)).toBeDefined();
     expect(screen.queryByText(/Fell 9\.00%/)).toBeNull();
+  });
+
+  it('says where the price is now when that differs from where the events ended', async () => {
+    /*
+     * The two screens used to disagree in silence. This view shows the price at
+     * the last unread event; "My watchlist" shows the latest observation, and
+     * with a generator running they diverge as soon as a tick lands that does
+     * not cross the threshold. Measured live: INFY read ₹1,200.00 here and
+     * ₹1,176.61 there, at the same instant, with nothing to explain it.
+     */
+    const drifted: AttentionFeedResponse = {
+      ...goldenFeed,
+      summary: {
+        ...goldenFeed.summary,
+        instruments: goldenFeed.summary.instruments.map((entry) => ({
+          ...entry,
+          observedPrice: 281_451,
+          observedAt: 1_700_000_600_000,
+        })),
+      },
+    };
+
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : drifted));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+    fireEvent.click(screen.getByRole('button', { name: 'Traditional watchlist' }));
+
+    // Both readings are present, and distinguishable.
+    expect(screen.getByText('₹2,900.00')).toBeDefined();
+    expect(screen.getByText(/now ₹2,814\.51/)).toBeDefined();
+  });
+
+  it('says nothing about a current price it does not have', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+    fireEvent.click(screen.getByRole('button', { name: 'Traditional watchlist' }));
+
+    // goldenFeed carries no observation, so no second price is invented.
+    expect(screen.queryByText(/now ₹/)).toBeNull();
   });
 
   it('returns to the Market Pulse view', async () => {
@@ -254,6 +303,8 @@ describe('ranking and narrative are separated', () => {
           latestPrice: 120_000,
           netChangeBps: -2000,
           meaningfulChanges: 1,
+          observedPrice: undefined,
+          observedAt: undefined,
         },
       ],
     },
@@ -271,6 +322,7 @@ describe('ranking and narrative are separated', () => {
       },
       ...goldenFeed.events,
     ],
+    eventLimit: 50,
   };
 
   it('orders instruments by their largest move', async () => {
@@ -355,6 +407,8 @@ describe('signal context: is this specific to the instrument, or wider?', () => 
           latestPrice: 263_900,
           netChangeBps: -900,
           meaningfulChanges: 1,
+          observedPrice: undefined,
+          observedAt: undefined,
         },
         {
           instrumentId: 'INFY',
@@ -362,6 +416,8 @@ describe('signal context: is this specific to the instrument, or wider?', () => 
           latestPrice: 120_000,
           netChangeBps: -2000,
           meaningfulChanges: 1,
+          observedPrice: undefined,
+          observedAt: undefined,
         },
         {
           instrumentId: 'TATAMOTORS',
@@ -369,6 +425,8 @@ describe('signal context: is this specific to the instrument, or wider?', () => 
           latestPrice: 82_000,
           netChangeBps: 513,
           meaningfulChanges: 1,
+          observedPrice: undefined,
+          observedAt: undefined,
         },
       ],
     },
@@ -407,6 +465,7 @@ describe('signal context: is this specific to the instrument, or wider?', () => 
         signalContext: 'stock-specific',
       },
     ],
+    eventLimit: 50,
   };
 
   it('shows a glanceable tag for market-wide and outlier, but not for stock-specific', async () => {
@@ -463,6 +522,8 @@ describe('the wording never claims more than the events do', () => {
           latestPrice: 89_000,
           netChangeBps: 1410,
           meaningfulChanges: 2,
+          observedPrice: undefined,
+          observedAt: undefined,
         },
       ],
     },
@@ -490,6 +551,7 @@ describe('the wording never claims more than the events do', () => {
         signalContext: undefined,
       },
     ],
+    eventLimit: 50,
   };
 
   it('says a rise rose, when nothing fell before it', async () => {
@@ -566,4 +628,76 @@ describe('what arrives while the page is open', () => {
     });
     expect(screen.queryByText(/arrived while this page was open/)).toBeNull();
   }, 20_000);
+});
+
+/**
+ * The tabs announced themselves as tabs and then behaved as three buttons:
+ * role="tablist" and aria-selected with no tabpanel to point at, no
+ * aria-controls, and no arrow-key navigation. Half an ARIA pattern is worse
+ * than none, because the roles promise a relationship and a keyboard model
+ * that the markup does not deliver.
+ */
+describe('the tabs are a complete pattern, not half of one', () => {
+  async function renderTabs() {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : goldenFeed));
+    render(<App />);
+    return await screen.findByRole('tab', { name: 'My watchlist' });
+  }
+
+  it('points each tab at the panel it controls', async () => {
+    await renderTabs();
+
+    const selected = screen.getByRole('tab', { selected: true });
+    const panel = screen.getByRole('tabpanel');
+
+    expect(selected.getAttribute('aria-controls')).toBe(panel.id);
+    expect(panel.getAttribute('aria-labelledby')).toBe(selected.id);
+  });
+
+  it('keeps the tablist to one stop in the tab order', async () => {
+    await renderTabs();
+
+    // Roving tabindex: without it, reaching the page content means tabbing
+    // past every screen name.
+    const tabs = screen.getAllByRole('tab');
+    const reachable = tabs.filter((tab) => tab.tabIndex === 0);
+    expect(reachable).toHaveLength(1);
+    expect(reachable[0]?.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('moves between tabs with arrow keys, and wraps', async () => {
+    const first = await renderTabs();
+
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('While you were away');
+
+    fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Replay');
+
+    // Wraps rather than stopping, which is what the pattern specifies.
+    fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('My watchlist');
+  });
+
+  it('jumps to the ends with Home and End', async () => {
+    const first = await renderTabs();
+
+    fireEvent.keyDown(first, { key: 'End' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('Replay');
+
+    fireEvent.keyDown(screen.getByRole('tab', { selected: true }), { key: 'Home' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('My watchlist');
+  });
+
+  it('moves from whichever tab has focus, not from whichever is selected', async () => {
+    // These are normally the same, and were coupled only by assumption. Moving
+    // focus without selecting made them disagree.
+    const first = await renderTabs();
+    const replay = screen.getByRole('tab', { name: 'Replay' });
+    replay.focus();
+
+    fireEvent.keyDown(replay, { key: 'ArrowLeft' });
+    expect(screen.getByRole('tab', { selected: true }).textContent).toBe('While you were away');
+    expect(first.getAttribute('aria-selected')).toBe('false');
+  });
 });

@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { acknowledge, fetchFeed } from './api.js';
 import { AttentionFeed, TraditionalWatchlist } from './AttentionFeed.jsx';
-import { Header } from './Header.jsx';
+import { Header, panelId, tabId } from './Header.jsx';
 import { MarketStatus } from './MarketStatus.jsx';
 import { ReplayView } from './Replay.jsx';
 import { Watchlist } from './Watchlist.jsx';
@@ -77,7 +77,21 @@ export function App() {
   return (
     <>
       <Header tab={tab} onTabChange={setTab} user={user} onUserChange={setUser} />
-      <main className="shell">
+      {/*
+        The other half of the tabs pattern. The header's tabs point here with
+        aria-controls; without a panel to point at, those roles promised a
+        relationship assistive technology could not find.
+
+        `tabIndex={-1}` rather than 0: the panel is a focus *target* for the
+        arrow-key navigation in the header, not another stop in the tab order.
+      */}
+      <main
+        className="shell"
+        role="tabpanel"
+        id={panelId(tab)}
+        aria-labelledby={tabId(tab)}
+        tabIndex={-1}
+      >
         <MarketStatus />
 
         {tab === 'watchlist' && (

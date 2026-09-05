@@ -1,6 +1,10 @@
 import { useCallback, useState } from 'react';
-import type { WatchlistResponse, WatchlistRowView } from '@market-pulse/domain';
-import { addToWatchlist, fetchWatchlist, removeFromWatchlist } from './api.js';
+import type {
+  InstrumentCatalogueResponse,
+  WatchlistResponse,
+  WatchlistRowView,
+} from '@market-pulse/domain';
+import { addToWatchlist, fetchInstruments, fetchWatchlist, removeFromWatchlist } from './api.js';
 import { usePoll } from './usePoll.js';
 import { formatPercent, formatPrice, formatTime, pluralise } from './format.js';
 
@@ -57,9 +61,24 @@ function Row({
           <>
             <div className="attention-note">
               ● {pluralise(row.meaningfulChanges, 'meaningful change')}
-              {row.netChangeBps === 0
-                ? ' — but the price came back'
-                : row.netChangeBps !== undefined && ` — net ${formatPercent(row.netChangeBps)}`}
+              {/*
+                "but the price came back" was printed beside the *live* price,
+                which is not where it came back to: RELIANCE read "the price
+                came back" next to ₹2,814.51 while the events it describes
+                ended at ₹2,900. The net is a fact about the changes you
+                missed; the number on the right is the latest observation. Both
+                cases now say "across them", which scopes the claim to the
+                events and makes the two readings distinguishable.
+              */}
+              {/*
+                "overall", not "across them": measured at 390px, the longer
+                phrase wrapped every row to two lines with a single orphaned
+                word, which is the kind of defect this repo's history says is
+                only ever found by looking. "overall" scopes the net to the
+                changes just as clearly and fits on one line at every count.
+              */}
+              {row.netChangeBps !== undefined &&
+                ` — net ${formatPercent(row.netChangeBps)} overall`}
             </div>
             <button type="button" className="link" onClick={onViewChanges}>
               View what happened →
@@ -113,6 +132,12 @@ export function Watchlist({
     [userId],
   );
   const { data, error, override } = usePoll<WatchlistResponse>(load, WATCHLIST_POLL_MS);
+
+  // The catalogue does not change while the page is open, so this is a load,
+  // not a poll. `usePoll` with an interval of 0 is exactly that.
+  const loadInstruments = useCallback((signal: AbortSignal) => fetchInstruments(signal), []);
+  const instruments = usePoll<InstrumentCatalogueResponse>(loadInstruments, 0);
+
   const [draft, setDraft] = useState('');
   const [writeError, setWriteError] = useState<string | undefined>(undefined);
 
@@ -156,7 +181,16 @@ export function Watchlist({
 
   return (
     <div>
-      <p className="subtitle">
+      {/*
+        The one line worth announcing on a screen that rewrites itself every
+        four seconds. Prices changing is ambient; "9 need your attention"
+        becoming 10 is the event — and for a sighted reader the price flash
+        carries it, while for a screen-reader user nothing did.
+
+        Not on the rows themselves: twelve numbers re-reading aloud on every
+        poll would make the page unusable.
+      */}
+      <p className="subtitle" aria-live="polite">
         {data.rows.length === 0
           ? 'Nothing followed yet.'
           : `${pluralise(data.rows.length, 'instrument')} followed. ${
@@ -216,7 +250,23 @@ export function Watchlist({
           onChange={(e) => setDraft(e.target.value)}
           placeholder="Add a symbol"
           aria-label="Instrument symbol"
+          list="tradeable-instruments"
+          autoComplete="off"
         />
+        {/*
+          The input was blind free text against a fictional market nobody can
+          guess. Following an untraded symbol is still allowed -- see the
+          footnote -- but it should be a choice, not an undetectable typo.
+          The benchmark is deliberately absent: the server refuses it, so
+          offering it would invite an error rather than prevent one.
+        */}
+        <datalist id="tradeable-instruments">
+          {(instruments.data?.instruments ?? [])
+            .filter((entry) => !entry.isBenchmark)
+            .map((entry) => (
+              <option key={entry.instrumentId} value={entry.instrumentId} />
+            ))}
+        </datalist>
         <button type="submit" className="primary" disabled={draft.trim().length === 0}>
           Add
         </button>

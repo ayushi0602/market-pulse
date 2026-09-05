@@ -15,14 +15,36 @@ import {
 } from '@market-pulse/domain';
 import { BENCHMARK_SYMBOL } from '../market/catalogue.js';
 import type { EventStore } from '../market/event-store.js';
+import type { SnapshotStore } from '../market/snapshot-store.js';
 import type { WatermarkStore } from './watermark-store.js';
 
 export interface AttentionRoutesDeps {
   events: EventStore;
   watermarks: WatermarkStore;
+  /**
+   * Read-only on purpose: `Pick<..., 'list'>`, not the whole `SnapshotStore`.
+   *
+   * The feed needs the latest observation so the two screens can be reconciled,
+   * and it has no business recording one. Narrowing the type here keeps that a
+   * structural fact rather than a convention -- there is no `record` on this
+   * object to call by accident, the same way replay holds no `WatermarkStore`.
+   */
+  snapshots: Pick<SnapshotStore, 'list'>;
 }
 
 const BENCHMARK = instrumentId(BENCHMARK_SYMBOL);
+
+/**
+ * How many events one feed response may carry.
+ *
+ * The unread window is unbounded by design -- that is what "while you were
+ * away" means -- so the response had to be bounded somewhere. 50 is a product
+ * decision, not a technical limit: it is more than a person will read in one
+ * sitting and small enough that a month-long absence does not ship megabytes to
+ * a phone on every poll. The summary counts are deliberately not capped, so the
+ * page always says how much it is a page *of*.
+ */
+const EVENT_LIMIT = 50;
 
 function toFeedEvent(
   record: RecordedMarketEvent,
@@ -62,7 +84,11 @@ function toFeedEvent(
  * forward. Displaying and acknowledging are different events in the world, so
  * they are different requests here (F1).
  */
-export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDeps): Router {
+export function createAttentionRoutes({
+  events,
+  watermarks,
+  snapshots,
+}: AttentionRoutesDeps): Router {
   const router = Router();
 
   router.get('/attention-feed', (req, res) => {
@@ -79,33 +105,61 @@ export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDep
     // depend on whether this particular user has acknowledged it yet.
     const benchmarkHistory = events.readAfter(0, BENCHMARK).map((record) => record.event);
 
+    const unreadRecords = events.readAfter(watermark.lastSeenSequence);
+
+    /*
+     * The boundary comes from the records just read, not from a second call.
+     *
+     * `events.head()` gave the same answer only because `node:sqlite` is
+     * synchronous and a timer cannot preempt a synchronous handler -- the
+     * safety came from the runtime rather than from the code, and nothing
+     * recorded that. One `await` in this handler, or the async driver the
+     * Postgres note in db/connection.ts contemplates, and an event landing
+     * between the two calls would be acknowledged without ever being shown:
+     * the exact F1 failure this module exists to prevent.
+     *
+     * Derived from the *unfiltered* read, deliberately. Every record here has
+     * been accounted for -- shown, or deliberately withheld as benchmark
+     * context -- so all of them are legitimately behind the reader. Taking the
+     * last *filtered* record instead would leave a trailing run of benchmark
+     * events permanently unreachable, and the watermark would never catch up to
+     * a log whose newest entries are the index moving.
+     */
+    const throughSequence = unreadRecords.at(-1)?.sequence ?? watermark.lastSeenSequence;
+
     // The benchmark moving is context for other events, not itself a thing to
     // read: it is not something either seeded user followed, and it has no
     // signalContext of its own to explain. Excluding it here is what keeps
     // "12 instruments followed, N need your attention" honest once a 13th,
     // unfollowed instrument exists in the shared log.
-    const unread = events
-      .readAfter(watermark.lastSeenSequence)
-      .filter((record) => record.event.instrumentId !== BENCHMARK);
+    const unread = unreadRecords.filter((record) => record.event.instrumentId !== BENCHMARK);
+
+    const observed = new Map(snapshots.list().map((snapshot) => [snapshot.instrumentId, snapshot]));
 
     const body: AttentionFeedResponse = {
       userId: user,
       sinceSequence: watermark.lastSeenSequence,
-      // The head as of this read. The client acknowledges this, not whatever the
-      // head becomes later -- otherwise events arriving between the read and the
-      // acknowledgement would be marked seen without ever being shown.
-      throughSequence: events.head(),
+      throughSequence,
       summary: {
+        // Both counts cover the whole window, never the page below.
         meaningfulChanges: unread.length,
-        instruments: summariseUnread(unread).map((summary) => ({
-          instrumentId: summary.instrumentId,
-          priceWhenLastSeen: summary.priceWhenLastSeen,
-          latestPrice: summary.latestPrice,
-          netChangeBps: summary.netChangeBps,
-          meaningfulChanges: summary.meaningfulChanges,
-        })),
+        instruments: summariseUnread(unread).map((summary) => {
+          const snapshot = observed.get(summary.instrumentId);
+          return {
+            instrumentId: summary.instrumentId,
+            priceWhenLastSeen: summary.priceWhenLastSeen,
+            latestPrice: summary.latestPrice,
+            netChangeBps: summary.netChangeBps,
+            meaningfulChanges: summary.meaningfulChanges,
+            observedPrice: snapshot?.latestPrice,
+            observedAt: snapshot?.observedAt,
+          };
+        }),
       },
-      events: rankBySignificance(unread).map((record) => toFeedEvent(record, benchmarkHistory)),
+      events: rankBySignificance(unread)
+        .slice(0, EVENT_LIMIT)
+        .map((record) => toFeedEvent(record, benchmarkHistory)),
+      eventLimit: EVENT_LIMIT,
     };
 
     res.json(body);

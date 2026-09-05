@@ -156,7 +156,30 @@ describe('AC3: append-only survives persistence', () => {
     const db = open();
     try {
       const store = createEventStore(db, sequentialIds(), clock);
-      expect(Object.keys(store).sort()).toEqual(['append', 'head', 'readAfter']);
+      const methods = Object.keys(store).sort();
+
+      // The enumeration keeps a new method from arriving unnoticed: adding one
+      // has to be a deliberate edit here, with a reason.
+      expect(methods).toEqual([
+        'append',
+        'head',
+        'readAfter',
+        'readAfterForInstruments',
+        'storyCounts',
+      ]);
+
+      // And the property the enumeration exists to protect, asserted directly
+      // rather than implied by a list. `append` is the only thing here that
+      // writes; everything else reads. A method that removed or rewrote a
+      // record would fail this even if someone had updated the list above
+      // without thinking about what they were adding.
+      const writers = methods.filter((name) => name !== 'append');
+      expect(writers).not.toContain(
+        expect.stringMatching(/update|delete|remove|drop|truncate|clear|set|rewrite/i),
+      );
+      for (const name of writers) {
+        expect(name).toMatch(/^(read|head|story|list|count|find|get)/);
+      }
     } finally {
       db.close();
     }

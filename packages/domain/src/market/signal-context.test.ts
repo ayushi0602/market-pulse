@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { instrumentId } from './instrument.js';
 import { rupees } from './money.js';
-import { classifySignal, OUTLIER_FACTOR } from './signal-context.js';
+import {
+  classifySignal,
+  MAX_BENCHMARK_REFERENCE_AGE_MS,
+  OUTLIER_FACTOR,
+} from './signal-context.js';
 import type { SignalClassification } from './signal-context.js';
 import type { MeaningfulMarketEvent } from './event.js';
 
@@ -107,6 +111,85 @@ describe('classifySignal: is this specific to the instrument, or wider?', () => 
       magnitudeBps: 650,
     });
     expect(classifySignal(move, [stale, current])).toBe('market-wide');
+  });
+});
+
+/**
+ * SC2 exists because the running app got this wrong.
+ *
+ * NIFTY's last recorded move was an advance at 18:57; it had not moved since.
+ * A ZOMATO advance at 20:10 -- 73 minutes later -- was still being classified
+ * `market-wide` against it, and the UI told the reader "the instrument is
+ * doing what everything is doing" about a market that had been flat for over
+ * an hour.
+ *
+ * Every fixture above places the benchmark at `T0 - 1`, which is why the suite
+ * could not see it. SC1 proves a benchmark from the *future* cannot leak in;
+ * these prove one from the distant *past* stops counting.
+ */
+describe('SC2: a stale benchmark move is not evidence about a later one', () => {
+  it('ignores a benchmark move older than the reference window', () => {
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 700 });
+    const ancient = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - MAX_BENCHMARK_REFERENCE_AGE_MS - 1,
+      direction: 'decline',
+      magnitudeBps: 650,
+    });
+
+    expect(classifySignal(move, [ancient])).toBe('stock-specific');
+  });
+
+  it('still uses a benchmark move exactly at the edge of the window', () => {
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 700 });
+    const edge = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - MAX_BENCHMARK_REFERENCE_AGE_MS,
+      direction: 'decline',
+      magnitudeBps: 650,
+    });
+
+    expect(classifySignal(move, [edge])).toBe('market-wide');
+  });
+
+  it('does not let a stale move win over a fresh one that is in range', () => {
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 700 });
+    const staleButHuge = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - MAX_BENCHMARK_REFERENCE_AGE_MS - 1,
+      direction: 'decline',
+      magnitudeBps: 690,
+    });
+    const fresh = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - 1,
+      direction: 'decline',
+      magnitudeBps: 100,
+    });
+
+    // Only `fresh` is admissible, and 700 > 100 * 1.5, so this is an outlier.
+    // If the stale event were still considered it would read market-wide.
+    expect(classifySignal(move, [staleButHuge, fresh])).toBe('outlier');
+  });
+
+  it('the seeded demo classifications survive the window', () => {
+    // Every classified event in the seeded catalogue shares an exact timestamp
+    // with the benchmark move it is judged against -- age 0 -- so the window
+    // must not disturb the story the demo tells. Asserted here rather than
+    // only in the server suite, because this is the constraint that decides
+    // whether the window's value is allowed to change.
+    const benchmarkDecline = event({
+      instrumentId: INDEX,
+      occurredAt: T0,
+      direction: 'decline',
+      magnitudeBps: 700,
+    });
+
+    const relianceDecline = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 900 });
+    const infyFall = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 2000 });
+
+    expect(classifySignal(relianceDecline, [benchmarkDecline])).toBe('market-wide');
+    expect(classifySignal(infyFall, [benchmarkDecline])).toBe('outlier');
   });
 });
 
@@ -330,9 +413,15 @@ describe('a benchmark with gaps, or one that starts after the stock event', () =
     });
     // A gap in the benchmark's own history -- e.g. a quiet period -- between
     // `early` and the event just before `move`.
+    //
+    // `beforeGap` sits inside MAX_BENCHMARK_REFERENCE_AGE_MS deliberately.
+    // This test is about *which* of two candidates wins, and the answer must
+    // not depend on the window admitting a stale one; SC2 owns the question of
+    // how old a reference may be. Placing it outside the window would make
+    // this test assert both things at once and fail for the wrong reason.
     const beforeGap = event({
       instrumentId: INDEX,
-      occurredAt: T0 + 4 * HOUR,
+      occurredAt: T0 + 5 * HOUR - MAX_BENCHMARK_REFERENCE_AGE_MS / 2,
       direction: 'decline',
       magnitudeBps: 650,
     });

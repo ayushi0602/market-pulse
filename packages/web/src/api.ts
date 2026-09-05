@@ -1,17 +1,45 @@
 import type {
   AcknowledgeResponse,
   AttentionFeedResponse,
+  InstrumentCatalogueResponse,
   MarketStatusResponse,
   ReplayCatalogueResponse,
   ReplayResponse,
   WatchlistResponse,
 } from '@market-pulse/domain';
 
+/**
+ * Reads a response, and on failure surfaces what the server actually said.
+ *
+ * This used to throw `API responded ${status}` and discard the body, so every
+ * failure reached the user as a status code: the server's "NIFTY is a market
+ * benchmark, not something a watchlist can follow" was rendered as "That did
+ * not save — API responded 400." The server writes the error copy because it is
+ * the only party that knows why; throwing it away made that work invisible.
+ *
+ * The status is still the fallback, for a response with no usable body — an
+ * intermediary's error page, or a failure with nothing to say.
+ */
 async function json<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    throw new Error(`API responded ${response.status}`);
+    throw new Error(await errorMessage(response));
   }
   return (await response.json()) as T;
+}
+
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (typeof body === 'object' && body !== null) {
+      const { error } = body as Record<string, unknown>;
+      if (typeof error === 'string' && error.trim().length > 0) {
+        return error;
+      }
+    }
+  } catch {
+    // Not JSON, or an empty body. The status is all there is.
+  }
+  return `API responded ${response.status}`;
 }
 
 export async function fetchFeed(
@@ -70,6 +98,16 @@ export async function fetchWatchlist(
   return json<WatchlistResponse>(
     await fetch(`/api/watchlist?userId=${encodeURIComponent(userId)}`, init),
   );
+}
+
+/**
+ * What this market trades, so the add box can offer rather than ask.
+ *
+ * Carries no user: the catalogue is a property of the market, not of a reader.
+ */
+export async function fetchInstruments(signal?: AbortSignal): Promise<InstrumentCatalogueResponse> {
+  const init = signal ? { signal } : {};
+  return json<InstrumentCatalogueResponse>(await fetch('/api/instruments', init));
 }
 
 export async function addToWatchlist(

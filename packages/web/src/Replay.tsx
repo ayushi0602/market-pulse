@@ -91,8 +91,13 @@ function InstrumentPicker({
       <select value={selected} onChange={(event) => onSelect(event.target.value)}>
         {catalogue.instruments.map((entry) => (
           <option key={entry.instrumentId} value={entry.instrumentId}>
-            {entry.instrumentId} — {pluralise(entry.events, 'change')}, biggest{' '}
-            {formatPercent(entry.largestMoveBps, false)}
+            {entry.instrumentId}
+            {/* The benchmark is refused by watchlists and excluded from the
+                feed, and then sat here as an ordinary peer with no
+                explanation. It is a different kind of thing to replay, so it
+                says so. */}
+            {entry.isBenchmark ? ' (market benchmark)' : ''} — {pluralise(entry.events, 'change')},
+            biggest {formatPercent(entry.largestMoveBps, false)}
           </option>
         ))}
       </select>
@@ -128,8 +133,32 @@ export function ReplayView({ instrumentId: initial, stepIntervalMs = 1400 }: Rep
   const loadCatalogue = useCallback((signal: AbortSignal) => fetchReplayInstruments(signal), []);
   const { data: catalogue } = usePoll<ReplayCatalogueResponse>(loadCatalogue, 0);
 
-  // Default to the biggest story, which is the order the endpoint returns.
-  const symbol = chosen ?? catalogue?.instruments[0]?.instrumentId;
+  /**
+   * Default to the *richest* story, not the largest single move.
+   *
+   * The endpoint orders by largest move, so this opened on INFY — one event.
+   * A reviewer's first encounter with replay was: press Play, one step, done,
+   * while RELIANCE, the round trip the whole product exists to explain, sat
+   * third in the list. Most events is the better proxy for "a story worth
+   * stepping through"; the picker still lists everything, biggest move first.
+   *
+   * The benchmark is skipped as a default for the same reason it is labelled:
+   * it is market context, and a poor thing to land on cold.
+   */
+  const defaultInstrument = useMemo(() => {
+    const candidates = (catalogue?.instruments ?? []).filter((entry) => !entry.isBenchmark);
+    const richest = candidates.reduce<(typeof candidates)[number] | undefined>(
+      (best, entry) =>
+        best === undefined || entry.events > best.events
+          ? entry
+          : // Ties fall back to the endpoint's own order: biggest move first.
+            best,
+      undefined,
+    );
+    return richest?.instrumentId ?? catalogue?.instruments[0]?.instrumentId;
+  }, [catalogue]);
+
+  const symbol = chosen ?? defaultInstrument;
 
   useEffect(() => {
     if (symbol === undefined) return;

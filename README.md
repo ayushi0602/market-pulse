@@ -216,8 +216,22 @@ Stated plainly, because they affect what the system can honestly claim.
 - **Significance is one threshold (5%).** Not calibrated against real market
   behaviour; volatility-relative significance is a real refinement and is not
   built.
-- **One user, one watchlist, no auth.** `userId` is a query parameter and a text
-  box. Multiple watchlists would widen one primary key.
+- **No authentication, and that exposes writes, not just reads.** `userId` is a
+  query parameter and a text box, so any caller can read *or modify* any
+  reader's state — advance someone else's watermark, remove someone else's
+  watchlist entry. Because watermarks only move forward, a forged
+  acknowledgement is unrecoverable: it permanently marks another person's unread
+  events as read. Worth stating plainly rather than as "no auth", which sounds
+  like a read-scope simplification. The model is auth-ready — the watermark is
+  already keyed by user and enforced monotonic in SQL — so the change is
+  middleware that derives `userId` from a session instead of the query string,
+  not a redesign. Multiple watchlists would separately widen one primary key.
+- **The feed returns a page, and its read is still unbounded.** At most 50 events
+  come back per request, most significant first, with the summary counts
+  deliberately covering the *whole* unread window so "9 instruments need your
+  attention" stays true. The response is therefore constant-size; the
+  server-side read is not, because computing those counts still walks the whole
+  window. Bounding that too means a SQL aggregate.
 - **No ingestion pipeline.** Duplicate ticks, out-of-order arrival, staleness and
   provider disconnects are all undecided, and would be a phase of their own.
 
@@ -269,6 +283,14 @@ npm run verify   # format + lint + typecheck + test + build
 Seeding refuses to run twice against the same database: history is append-only,
 so a second run would append a duplicate story rather than replacing it. Use
 `db:reset` to start over.
+
+**Seed before you run.** With an empty database there is nothing to simulate, and
+the app says so rather than pretending: the server logs that it has nothing to
+generate, and the Resume control answers `409` naming the command to run instead
+of silently doing nothing.
+
+`npm run verify` also runs in CI on every push and pull request — see
+[.github/workflows/verify.yml](.github/workflows/verify.yml).
 
 ## Layout
 

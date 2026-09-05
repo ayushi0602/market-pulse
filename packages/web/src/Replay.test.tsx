@@ -171,8 +171,9 @@ describe('an instrument with no story', () => {
 describe('choosing which story to replay', () => {
   const catalogue = {
     instruments: [
-      { instrumentId: 'INFY', events: 1, largestMoveBps: 2000 },
-      { instrumentId: 'RELIANCE', events: 2, largestMoveBps: 989 },
+      { instrumentId: 'INFY', events: 1, largestMoveBps: 2000, isBenchmark: false },
+      { instrumentId: 'RELIANCE', events: 2, largestMoveBps: 989, isBenchmark: false },
+      { instrumentId: 'NIFTY', events: 2, largestMoveBps: 700, isBenchmark: true },
     ],
   };
 
@@ -212,19 +213,44 @@ describe('choosing which story to replay', () => {
     return spy;
   }
 
-  it('opens on the biggest story when it is not told which one', async () => {
+  it('opens on the richest story, not the largest single move', async () => {
     stubBoth();
     render(<ReplayView stepIntervalMs={5} />);
 
-    // The endpoint returns them largest-move first, so the first option is the
-    // one worth opening on. Nothing here picks an instrument by name.
-    // A type argument, not an assertion: §4 avoids both `as T` and `!`, and
-    // findByRole is generic precisely so the element type can be stated.
+    /*
+     * The endpoint orders by largest move, and opening on the first option
+     * meant opening on INFY -- one event. A reviewer's first encounter with
+     * replay was: press Play, one step, done, while RELIANCE, the round trip
+     * the whole product exists to explain, sat further down the list.
+     *
+     * Most events is the better proxy for "a story worth stepping through".
+     * The picker still lists everything largest-move first; only the landing
+     * choice changed.
+     *
+     * A type argument, not an assertion: §4 avoids both `as T` and `!`, and
+     * findByRole is generic precisely so the element type can be stated.
+     */
     const select = await screen.findByRole<HTMLSelectElement>('combobox');
-    expect(select.value).toBe('INFY');
-    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(select.value).toBe('RELIANCE');
+    expect(screen.getAllByRole('option')).toHaveLength(3);
     // Nothing is revealed until the reviewer steps, so the cursor starts here.
     expect(screen.getByText('Before you left')).toBeDefined();
+  });
+
+  it('never lands on the benchmark, and labels it when listed', async () => {
+    stubBoth();
+    render(<ReplayView stepIntervalMs={5} />);
+
+    // NIFTY is refused by watchlists and excluded from the feed; landing a
+    // reviewer on it cold, unlabelled, was the one screen where that design
+    // intent never reached the interface.
+    const select = await screen.findByRole<HTMLSelectElement>('combobox');
+    expect(select.value).not.toBe('NIFTY');
+
+    const benchmark = screen
+      .getAllByRole('option')
+      .find((option) => option.textContent?.startsWith('NIFTY'));
+    expect(benchmark?.textContent).toContain('market benchmark');
   });
 
   it('loads the chosen story and resets the cursor', async () => {
@@ -232,26 +258,26 @@ describe('choosing which story to replay', () => {
     render(<ReplayView stepIntervalMs={5} />);
     await screen.findByRole('combobox');
 
+    // Starts on RELIANCE, the richest story, and steps into its first event.
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-    expect(await screen.findByText(/Fell 20\.00%/)).toBeDefined();
-    expect(screen.getByText('Where it ended')).toBeDefined();
+    expect(await screen.findByText(/Fell 9\.00%/)).toBeDefined();
 
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'RELIANCE' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'INFY' } });
 
     // A new story starts at the beginning. Carrying the old cursor over would
     // reveal a different instrument's events at a position that means nothing.
     expect(await screen.findByText('Before you left')).toBeDefined();
-    expect(screen.queryByText(/Fell 20\.00%/)).toBeNull();
+    expect(screen.queryByText(/Fell 9\.00%/)).toBeNull();
   });
 
   it('never names a user, whichever story is chosen', async () => {
     const spy = stubBoth();
     render(<ReplayView stepIntervalMs={5} />);
     await screen.findByRole('combobox');
-    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'RELIANCE' } });
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'INFY' } });
     await screen.findByText('Before you left');
     fireEvent.click(screen.getByRole('button', { name: /Next/ }));
-    await screen.findByText(/Fell 9\.00%/);
+    await screen.findByText(/Fell 20\.00%/);
 
     // R5 at the client boundary: adding a picker must not be the thing that
     // quietly makes replay per-user.

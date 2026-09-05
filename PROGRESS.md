@@ -14,15 +14,22 @@ iteration that changed them, so the reasoning stays traceable.
 
 | | |
 | --- | --- |
-| **Iteration** | 8 — front-end pass |
+| **Iteration** | 13 — second audit and remediation |
 | **Repo root** | `/Users/ayushi/market-pulse` (shell `pwd` is `/Users/ayushi`, one level up) |
 | **Runs?** | Yes — `npm run dev` serves web `:5173` + API `:4000` |
-| **Tests** | 184 passing, 19 files |
-| **Gate** | `npm run verify` green (format + lint + typecheck + test + build) |
+| **Tests** | 315 passing, 25 files |
+| **Gate** | `npm run verify` green (format + lint + typecheck + test + build), and now run by CI |
 | **Market features** | End to end: engine → log → watermark → API → screen. |
 
-**Next up:** nothing. The project is feature-complete against the brief. Any
-further work is visual refinement or fixing what a real reviewer trips over.
+*(This block had drifted badly — it read "Iteration 8, 184 tests" while the repo
+was at 315. A number in this file is a claim; the convention above says to update
+it every iteration, and several iterations did not.)*
+
+**Next up:** nothing in the code. What remains is not engineering — confirm the
+push actually landed, and rehearse the demo once. Two findings are open by
+choice and written up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md) §4: there is no auth,
+and the feed's server-side read is still unbounded even though its payload is
+not.
 
 ---
 
@@ -1101,3 +1108,67 @@ guard, all caught. Live E2E: `NIFTY`, `nifty`, `Nifty`, `NiFtY` and
 `"  nifty  "` all refused with an empty watchlist; `INFY` still added;
 RELIANCE still classified `market-wide`/`outlier` against NIFTY as benchmark
 context; F6 still refuses an out-of-range ack.
+
+
+---
+
+## Iteration 13 — second audit, and eleven fixes
+
+A break-it pass done by **running** the software rather than reading it: the
+gate, the live app at two widths, the API under malformed / oversized / hostile
+/ cross-user input, and the read endpoints benchmarked against synthetic logs of
+1,000 / 5,000 / 20,000 events. Then every finding fixable inside the existing
+design was fixed. Full write-up in [CLAUDE2AUDIT.md](CLAUDE2AUDIT.md).
+
+### Fixed
+
+| # | Finding | Where |
+| --- | --- | --- |
+| 1 | `classifySignal` had no recency window — a benchmark move 73 minutes stale still produced a **Market-wide** tag | `domain/market/signal-context.ts` |
+| 2 | No Express error handler: every POST leaked an HTML stack trace with absolute filesystem paths | `server/src/app.ts` |
+| 3 | The watchlist and the feed disagreed about every price, by up to 2.14%, with nothing to explain it | contracts, `attention.routes.ts`, web |
+| 4 | Watchlist cost scaled with the whole log, not the watchlist | `watchlist.routes.ts`, both stores |
+| 5 | The attention feed was unbounded — 4.4 MB at a 20k log, polled every 8s | `attention.routes.ts`, contract, web |
+| 6 | Any string was a valid instrument; no way to discover what is tradeable | `watchlist.routes.ts`, `market.routes.ts` |
+| 7 | Resuming a market with nothing to simulate answered `200 {running:false}` | `market.routes.ts`, `index.ts` |
+| 8 | The client threw away every server error message | `web/src/api.ts` |
+| 9 | Contrast failures (2.70:1 on the primary signal) and a half-applied ARIA tabs pattern | `styles.css`, `Header.tsx`, `App.tsx` |
+| 10 | The benchmark was treated three different ways on three screens; replay opened on a one-event story | replay route + picker |
+| 11 | The ack boundary was order-dependent and undocumented | `attention.routes.ts` |
+
+### Measured, before and after
+
+One user following **exactly one instrument**; only the log size varies.
+
+| Event log | `GET /watchlist` | `GET /attention-feed` payload |
+| --- | --- | --- |
+| 1,000 | 3.2 ms → **1.9 ms** | 224 KB → **19 KB** |
+| 5,000 | 9.1 ms → **1.1 ms** | 1,102 KB → **19 KB** |
+| 20,000 | 26.4 ms → **1.7 ms** | 4,405 KB → **19 KB** |
+
+Watchlist latency went from linear in log size to flat.
+
+### Also added
+
+- `PITCH.md` — the 100-word product pitch the challenge FAQ requires, which did
+  not exist.
+- `.github/workflows/verify.yml` — the gate had never been run by anything but a
+  person. Ranked highest-value remaining item in AUDIT.md §9.2.
+- `GET /api/instruments`, and a `datalist` behind the "Add a symbol" input.
+
+### Open by choice
+
+- **No auth.** `userId` is a query parameter, so any caller can advance any
+  reader's watermark — and because watermarks only move forward, a forged
+  acknowledgement is unrecoverable. A phase, not a patch. What should change is
+  the README's framing, which describes this as a read-scope simplification when
+  the real exposure is cross-user writes.
+- **Feed read cost.** The payload is bounded and constant; the server-side read
+  is not, because the summary counts must cover the whole window. Bounding it
+  means computing the summary as a SQL aggregate.
+
+### Verified
+
+`npm run verify` green — **315 tests, 25 files** (+49). Re-verified against the
+running app after every fix, not only in tests. Each fix mutation-tested: broken
+deliberately, new test confirmed failing, restored.

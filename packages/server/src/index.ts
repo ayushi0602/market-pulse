@@ -41,6 +41,11 @@ const server = app.listen(config.port, () => {
   const status = simulator?.status();
   if (status === undefined) {
     console.log('Market simulation is off. Prices are whatever the seed recorded.');
+  } else if (status.instruments === 0) {
+    // "Simulating 0 instrument(s) every 3000ms" was technically true and read
+    // as a working system. This is the state a fresh clone boots into.
+    console.log('Market simulation is on, but there is nothing to simulate yet.');
+    console.log('Run `npm run db:seed` to build the demo market, then restart.');
   } else {
     console.log(
       `Simulating ${status.instruments} instrument(s) every ${config.simulation.intervalMs}ms. ` +

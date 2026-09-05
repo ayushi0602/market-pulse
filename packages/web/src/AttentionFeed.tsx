@@ -170,6 +170,19 @@ export function AttentionFeed({ feed }: { feed: AttentionFeedResponse }) {
         Positions {feed.sinceSequence + 1}–{feed.throughSequence} of the shared event log.
       </p>
 
+      {/*
+        The unread window is unbounded — the longer you are away, the more there
+        is — so the response carries a page of it. Saying which page, and of
+        what, is the difference between a limit and a quiet omission. The
+        counts above are of the whole window, never of this page.
+      */}
+      {feed.events.length < feed.summary.meaningfulChanges && (
+        <p className="muted truncation-note">
+          Showing the {feed.events.length} largest of {feed.summary.meaningfulChanges} changes.{' '}
+          <strong>Mark all as read</strong> still marks every one of them, not only those shown.
+        </p>
+      )}
+
       {stories.map((story) => (
         <section className="card story-card" key={story.instrumentId}>
           <header className="story-head">
@@ -241,7 +254,9 @@ export function TraditionalWatchlist({ feed }: { feed: AttentionFeedResponse }) 
               <div>
                 <div className="symbol">{instrument.instrumentId}</div>
                 <div className="muted">
-                  {isFlat ? 'No change since your last check' : 'Since your last check'}
+                  {isFlat
+                    ? 'No change across what you missed'
+                    : 'Net change across what you missed'}
                 </div>
               </div>
               <div className="row-end">
@@ -257,6 +272,24 @@ export function TraditionalWatchlist({ feed }: { feed: AttentionFeedResponse }) 
                 >
                   {formatPercent(instrument.netChangeBps)}
                 </span>
+                {/*
+                  The two screens used to disagree silently. This price is where
+                  the *events* ended; "My watchlist" shows the latest
+                  observation, and with a market running they diverge as soon as
+                  a tick lands that does not cross the threshold — INFY read
+                  ₹1,200.00 here and ₹1,176.61 there, at the same instant, with
+                  nothing to explain it. Saying both is a stronger version of
+                  this screen's own argument, not a weaker one.
+                */}
+                {instrument.observedPrice !== undefined &&
+                  instrument.observedPrice !== instrument.latestPrice && (
+                    <div className="muted observed">
+                      now {formatPrice(instrument.observedPrice)}
+                      {instrument.observedAt !== undefined && (
+                        <> as recorded {formatTime(instrument.observedAt)}</>
+                      )}
+                    </div>
+                  )}
               </div>
             </div>
           );

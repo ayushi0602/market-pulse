@@ -1,0 +1,30 @@
+# The gate, run by something other than the person who wrote the code.
+#
+# `npm run verify` already existed and nothing ran it automatically, which made
+# "this repository has a quality gate" a claim rather than an observable fact.
+# It is one job because the gate is one command: format, lint, typecheck, test,
+# build. Splitting it into parallel jobs would be faster and would hide which
+# step a contributor is expected to run locally.
+name: verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # node:sqlite is built in from 22.5, and the project has no native
+          # build step or database service, so this is the whole environment.
+          node-version: '22.x'
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run verify
