@@ -2,6 +2,30 @@
 
 > **A price can return to where it started while something important happened in between.**
 
+A smart market watchlist that answers *"what meaningfully changed since I last
+checked?"* — per user, from where **you** last looked, so two people opening it
+at the same instant see different things.
+
+```bash
+npm install && npm run db:seed && npm run dev     # http://localhost:5173
+```
+
+Node ≥ 22.5. No database server, no container, no API key, no native build step.
+
+### Where to look
+
+| If you are looking for | Go to |
+| --- | --- |
+| **Architecture**, and the boundaries it enforces | [Architecture](#architecture) · [ARCHITECTURE.md](ARCHITECTURE.md) |
+| **Correctness & reliability** — what is guaranteed, and how | [Guarantees](#the-guarantees-and-how-each-one-holds) |
+| **Race conditions & data integrity** | [Guarantees](#the-guarantees-and-how-each-one-holds) — rows 3 and 4 |
+| **Scalability**, with measured numbers | [Scale](#what-happens-when-this-gets-big) |
+| **Failure handling & unreliable data** | [When things go wrong](#when-things-go-wrong) |
+| **Problem interpretation** — why this and not the obvious watchlist | [The problem](#the-problem) · [Not a hypothetical](#this-is-not-a-hypothetical) |
+| **Simplicity** — what was deliberately *not* built | [CUT_LIST.md](CUT_LIST.md) |
+| **Trade-offs and known limits**, stated plainly | [Trade-offs](#trade-offs-and-known-limitations) |
+| A 60-second tour of the running app | [Walkthrough](#a-60-second-walkthrough) |
+
 ## The problem
 
 A watchlist compares the current price against the last snapshot it showed you.
@@ -86,6 +110,125 @@ and that is the point.
 TCS sits on the watchlist and appears nowhere in the feed. It never crossed the
 significance threshold, so there is nothing to report — and it still belongs on
 the list, because a watchlist is what you care about, not only what changed.
+
+## Architecture
+
+Three packages. `domain` is pure TypeScript with **no dependencies at all** — no
+framework, no `node:` built-in, not even a clock. `server` and `web` both depend
+on it and never on each other. This is enforced by ESLint, not by convention: a
+`node:fs` import inside `domain` fails `npm run lint`.
+
+```mermaid
+flowchart TB
+    subgraph web["web — React + Vite"]
+        UI["Watchlist · Feed · Replay<br/>polls 4s / 8s / once"]
+    end
+
+    subgraph server["server — Express + node:sqlite"]
+        R["Routes<br/>attention · watchlist · replay · market"]
+        SIM["Simulator<br/>invents a price on a timer"]
+        ES[("market_events<br/>APPEND-ONLY")]
+        WM[("user_read_watermarks<br/>one integer per user")]
+        SN[("instrument_snapshots<br/>overwritten")]
+        WL[("watchlist_entries")]
+    end
+
+    subgraph domain["domain — pure, no I/O"]
+        ENG["observeTick<br/>significance engine"]
+        CLS["classifySignal<br/>market context"]
+        RANK["rankBySignificance"]
+        BW["buildWatchlist"]
+    end
+
+    UI -->|HTTP| R
+    SIM -->|tick| ENG
+    ENG -->|events only| ES
+    SIM --> SN
+    R --> ES
+    R --> WM
+    R --> SN
+    R --> WL
+    R -.uses.-> CLS
+    R -.uses.-> RANK
+    R -.uses.-> BW
+
+    style ES fill:#e9faf3,stroke:#04b488,stroke-width:2px
+    style domain fill:#f8f8f8,stroke:#dddee1
+```
+
+**The load-bearing idea is the split between the two kinds of storage.**
+
+| Table | Nature | Rule |
+| --- | --- | --- |
+| `market_events` | History | Append-only. Never mutated, never deleted. |
+| `instrument_snapshots` | Knowledge | Overwritten as we learn. Makes no claim about the past. |
+| `user_read_watermarks` | Position | One integer per user. Monotonic. |
+| `watchlist_entries` | Interest | Per user, freely added and removed. |
+
+A traditional watchlist stores only the second row. Storing the first is what
+makes "what did I miss" answerable at all — and storing the third is what makes
+the answer *yours* rather than everyone's.
+
+Note what the simulator is **not** given: a `WatermarkStore`. A running market
+therefore cannot consume anyone's unread events, because it has no way to
+address one.
+
+### The guarantees, and how each one holds
+
+The distinction that matters: some of these are enforced by a test, and some are
+enforced by the code *lacking the ability* to violate them.
+
+| # | Guarantee | How it is enforced |
+| --- | --- | --- |
+| 1 | **History is append-only** | Three ways: the store exposes no `update`/`delete`, the type has no mutating operation, and SQLite `BEFORE UPDATE`/`BEFORE DELETE` triggers abort it. A deletion forced into the request path during testing did not fail — it *could not execute*. |
+| 2 | **Reading never acknowledges** | `GET /attention-feed` performs no write. A refresh, a prefetch or a second tab cannot silently consume events you never saw. |
+| 3 | **A read position never moves backwards** — *race condition* | `last_read_sequence = MAX(excluded.last_read_sequence, last_read_sequence)` **inside the upsert**. Read-then-write in TypeScript leaves a gap between the read and the write; doing it in the statement leaves none. |
+| 4 | **A stale observation never overwrites a newer one** — *race condition* | Same technique in the snapshot upsert, keyed on `observed_at`. A late-arriving reading of an older moment is discarded, not applied. |
+| 5 | **One user's reading changes nothing for another** | Events are stored once and referenced by position. There is no per-user copy to diverge. |
+| 6 | **Replay cannot advance a read position** | `createReplayRoutes` is handed no `WatermarkStore`, and the request cannot name a user. Structural, not remembered. |
+| 7 | **Removing a watchlist entry cannot delete history** | `WatchlistStore` has no access to `market_events`, and the trigger in (1) would abort it anyway. |
+| 8 | **The engine is deterministic** | Pure fold over one instrument's ticks. Integer paise, never floating point. Same ticks in, same events out, byte-identical. |
+
+Each has a named test block. Each was **mutation-tested** — broken deliberately
+to confirm the matching test fails. A test that has never failed is not known to
+work.
+
+### What happens when this gets big
+
+Measured, not asserted. One user following **exactly one instrument**, with only
+the size of the shared log changing:
+
+| Event log | `GET /watchlist` | `GET /attention-feed` payload |
+| --- | --- | --- |
+| 1,000 | 1.9 ms | 19 KB |
+| 5,000 | 1.1 ms | 19 KB |
+| 20,000 | 1.7 ms | 19 KB |
+
+Both are flat because both reads are **scoped**: the watchlist reads only the
+instruments that user follows (`WHERE instrument_id IN (…)`, served by
+`idx_market_events_instrument_sequence`), and the feed returns at most 50 ranked
+events while its summary counts still cover the whole window.
+
+Before that scoping, the same table read 3.2 / 9.1 / **26.4 ms** and returned
+224 KB / 1.1 MB / **4.4 MB**. The cost of rendering one row was proportional to
+the size of the entire market's history — which is the kind of thing that only
+shows up if you measure it.
+
+The honest remaining limit: the feed's *payload* is bounded, but its
+*server-side read* still walks the whole unread window, because the summary
+counts must be complete. See [Trade-offs](#trade-offs-and-known-limitations).
+
+### When things go wrong
+
+| Failure | What happens |
+| --- | --- |
+| A tick arrives out of order | **Rejected**, not reordered or silently accepted — accepting one corrupts history in a way no later read can detect. The generator skips that instrument for that step rather than dying inside its own timer. |
+| A poll request fails | The last good reading stays on screen, with the error beside it. A dropped request is not a reason to blank a page someone is reading. |
+| A client acknowledges beyond the log head | **Refused with 400**, not clamped. Clamping would advance the watermark over events that were never shown — permanently, since watermarks only move forward. |
+| A client acknowledges below its watermark | Accepted as a no-op. It consumes nothing, so it is not an error. |
+| A malformed or oversized request body | `400` / `413` as JSON, matching every other error in the API. No stack trace, no filesystem path. |
+| The market has nothing to simulate | `409` naming the command to run, rather than reporting success for something that did not happen. |
+| Two spellings of one symbol | Stored as given. Case is folded in exactly one place — the benchmark guard — because folding it in *storage* would silently merge two rows. |
 
 ## The market keeps moving
 
