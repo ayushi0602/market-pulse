@@ -12,12 +12,15 @@ import { useCallback, useEffect, useState } from 'react';
  * Failures keep the previous data on screen. A dropped request is not a reason
  * to blank a page the user is reading -- the error surfaces beside the content
  * and the next tick usually clears it.
+ *
+ * Deliberately no "last loaded at" timestamp. It was here, and nothing rendered
+ * it: the freshness the user cares about is the server's `lastTickAt`, not the
+ * moment this browser happened to ask. A field whose only consumer was a
+ * condition that could never be false is not an abstraction, it is a leftover.
  */
 export interface Polled<T> {
   data: T | undefined;
   error: string | undefined;
-  /** When the last successful read landed, for an honest "updated" label. */
-  loadedAt: number | undefined;
   /** Forces an immediate re-read. */
   refresh: () => void;
   /**
@@ -37,7 +40,6 @@ export function usePoll<T>(
 ): Polled<T> {
   const [data, setData] = useState<T | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
-  const [loadedAt, setLoadedAt] = useState<number | undefined>(undefined);
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
@@ -50,7 +52,6 @@ export function usePoll<T>(
           if (cancelled) return;
           setData(next);
           setError(undefined);
-          setLoadedAt(Date.now());
         })
         .catch((cause: unknown) => {
           if (cancelled || controller.signal.aborted) return;
@@ -71,8 +72,7 @@ export function usePoll<T>(
   const override = useCallback((next: T) => {
     setData(next);
     setError(undefined);
-    setLoadedAt(Date.now());
   }, []);
 
-  return { data, error, loadedAt, refresh, override };
+  return { data, error, refresh, override };
 }

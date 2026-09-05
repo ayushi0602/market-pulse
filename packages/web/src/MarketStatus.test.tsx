@@ -110,3 +110,38 @@ describe('pausing the market', () => {
     expect(await screen.findByRole('button', { name: /Resume market/ })).toBeDefined();
   });
 });
+
+describe('a poll that fails after it was working', () => {
+  it('keeps the last good reading on screen and says it is reconnecting', async () => {
+    let healthy = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          healthy
+            ? new Response(JSON.stringify(running), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
+              })
+            : new Response('no', { status: 503 }),
+        ),
+      ),
+    );
+
+    render(<MarketStatus />);
+    await screen.findByText(/18 events recorded/);
+
+    healthy = false;
+    await waitFor(
+      () => {
+        expect(screen.getByText(/reconnecting/)).toBeDefined();
+      },
+      { timeout: 4000 },
+    );
+
+    // Blanking a strip the reader is looking at, because one request out of
+    // many failed, is worse than showing a slightly old number and saying so.
+    expect(screen.getByText(/18 events recorded/)).toBeDefined();
+    expect(screen.queryByText(/API unreachable/)).toBeNull();
+  }, 8000);
+});

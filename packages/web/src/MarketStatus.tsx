@@ -25,7 +25,7 @@ function seconds(ms: number): string {
 
 export function MarketStatus() {
   const load = useCallback((signal: AbortSignal) => fetchMarketStatus(signal), []);
-  const { data, error, loadedAt, refresh } = usePoll<MarketStatusResponse>(load, STATUS_POLL_MS);
+  const { data, error, refresh } = usePoll<MarketStatusResponse>(load, STATUS_POLL_MS);
 
   const [busy, setBusy] = useState(false);
   /**
@@ -90,9 +90,10 @@ export function MarketStatus() {
         {data.lastTickAt !== undefined && (
           <span className="observed">last at {formatTime(data.lastTickAt)}</span>
         )}
-        {loadedAt !== undefined && error !== undefined && (
-          <span className="status-stale">reconnecting…</span>
-        )}
+        {/* Reached only with data already on screen -- the no-data-plus-error
+            case returns above -- so this is the "it was working a moment ago"
+            state, not the "it never worked" one. */}
+        {error !== undefined && <span className="status-stale">reconnecting…</span>}
       </span>
 
       {!isStatic && (

@@ -419,8 +419,24 @@ out-of-order tick, and that throw was inside a `setInterval`, so a clock steppin
 backwards would take the generator down. It now skips that instrument for that
 step rather than inventing a timestamp to get past the check.
 
-Gate: `npm run verify` green — 208 tests, 21 files. No overflow at 390, 768 or
+Gate: `npm run verify` green — 218 tests, 21 files. No overflow at 390, 768 or
 900px. Verified live over CDP, not only in tests.
+
+**Audit pass afterwards**, which found five things the phase had left loose and
+is worth knowing the shape of:
+
+- `usePoll` exported a `loadedAt` that nothing rendered, and its single consumer
+  guarded on it with a condition that could never be false. Removed. The
+  freshness a reader cares about is the server's `lastTickAt`, not when this
+  browser happened to ask.
+- Four behaviours were built and documented but never proved: the
+  keep-the-last-good-reading path on a failed poll (twice — header and
+  watchlist), the replay instrument picker, and the arrival banner. All now have
+  tests, including that the picker never introduces a `userId` and that the
+  arrival count re-baselines when the reader changes.
+- Two iteration-log entries quoted a test count that a later commit had moved
+  past. **A number in this file is a claim; re-run the gate before writing
+  one.**
 
 ### 2026-09-04 — Phase 8: front-end pass (UI only)
 

@@ -865,7 +865,7 @@ a timestamp to satisfy the check.
 
 ### Verification
 
-`npm run verify` green — **208 tests, 21 files**. Measured rather than assumed:
+`npm run verify` green — **218 tests, 21 files**. Measured rather than assumed:
 
 | | |
 | --- | --- |
@@ -878,4 +878,22 @@ Live check over CDP: watchlist groups 9/3, feed shows 9 stories in largest-move
 order, wording reads *Rose* for TATAMOTORS and *Recovered* for RELIANCE, replay
 picker offers 9 stories and RELIANCE still closes on "The price went nowhere.
 The story did not."
+
+### Audit pass
+
+The phase was audited against its own claims rather than against memory. Five
+findings, all fixed:
+
+| Finding | Resolution |
+| --- | --- |
+| `usePoll` exposed `loadedAt`, which nothing rendered | Removed. Its one consumer guarded on it with a condition that could never be false, because the no-data case returns earlier. |
+| Stale-data-on-failed-poll was documented, never tested | Tests for both the header strip and the watchlist: last good reading stays, the page says it is reconnecting, and it does not fall back to the "never worked" error screen. |
+| The replay instrument picker had no client-side test | Three: it opens on the biggest story, switching resets the cursor, and no request it makes carries a `userId` (R5 at the client boundary). |
+| The arrival banner had no test | Two: it counts against where the feed stood when the page opened, and it re-baselines on a change of reader instead of counting one user's position against another's. |
+| Two doc entries quoted a superseded test count | Corrected to 218. |
+
+Checked and found clean: no `TODO`/`any`/`eslint-disable`/`@ts-ignore` anywhere
+in `src` or `test`; no unused CSS classes; every new module exported and wired;
+poll intervals in the code match the ones the README quotes (2s / 4s / 8s);
+`data/` and `.env` are git-ignored.
 

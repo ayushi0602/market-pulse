@@ -400,3 +400,57 @@ describe('the wording never claims more than the events do', () => {
     expect(screen.getByText(/Recovered 9\.89%/)).toBeDefined();
   });
 });
+
+describe('what arrives while the page is open', () => {
+  it('counts new events against where the feed stood when it opened', async () => {
+    let through = 2;
+    stubFetch((url) =>
+      url.includes('watchlist')
+        ? emptyWatchlist
+        : { ...goldenFeed, throughSequence: through, sinceSequence: 0 },
+    );
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // Nothing has arrived yet, so nothing says it has.
+    expect(screen.queryByText(/arrived while this page was open/)).toBeNull();
+
+    through = 5;
+    await waitFor(
+      () => {
+        expect(screen.getByText(/3 changes arrived while this page was open/)).toBeDefined();
+      },
+      { timeout: 12_000 },
+    );
+
+    // The point of the sentence: history moved, the read position did not.
+    expect(screen.getByText(/your read position did not/)).toBeDefined();
+  }, 20_000);
+
+  it('re-baselines when the reader changes, rather than counting one user against another', async () => {
+    stubFetch((url, init) => {
+      if (url.includes('watchlist')) return emptyWatchlist;
+      const user = url.includes('priya') ? 'priya' : 'demo';
+      void init;
+      return {
+        ...goldenFeed,
+        userId: user,
+        // priya is further along, so her feed reports a different position --
+        // which must read as "a different question", not "3 just arrived".
+        sinceSequence: user === 'priya' ? 1 : 0,
+        throughSequence: user === 'priya' ? 5 : 2,
+      };
+    });
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    fireEvent.change(screen.getByLabelText('User id'), { target: { value: 'priya' } });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Read position 1 of 5|Fell 9\.00%/)).toBeDefined();
+    });
+    expect(screen.queryByText(/arrived while this page was open/)).toBeNull();
+  }, 20_000);
+});

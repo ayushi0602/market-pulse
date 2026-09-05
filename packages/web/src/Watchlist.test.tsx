@@ -275,3 +275,39 @@ describe('a price that moves while you are watching', () => {
     expect(screen.getByTestId('watchlist-TCS').querySelector('.flash-up, .flash-down')).toBeNull();
   });
 });
+
+describe('a poll that fails after it was working', () => {
+  it('keeps the rows on screen rather than blanking the list', async () => {
+    let healthy = true;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          healthy || url.includes('market-status')
+            ? new Response(
+                JSON.stringify(url.includes('market-status') ? marketStatus : watchlist),
+                {
+                  status: 200,
+                  headers: { 'content-type': 'application/json' },
+                },
+              )
+            : new Response('no', { status: 503 }),
+        ),
+      ),
+    );
+
+    render(<Watchlist userId="demo" onViewChanges={() => undefined} />);
+    await screen.findByTestId('watchlist-TCS');
+
+    healthy = false;
+    await waitFor(
+      () => {
+        expect(screen.getByText(/Showing the last good reading/)).toBeDefined();
+      },
+      { timeout: 6000 },
+    );
+
+    expect(screen.getByTestId('watchlist-TCS')).toBeDefined();
+    expect(screen.getByTestId('watchlist-RELIANCE')).toBeDefined();
+  }, 10000);
+});

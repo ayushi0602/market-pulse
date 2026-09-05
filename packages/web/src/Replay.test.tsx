@@ -161,3 +161,93 @@ describe('an instrument with no story', () => {
     expect(screen.queryByRole('button', { name: /Next/ })).toBeNull();
   });
 });
+
+describe('choosing which story to replay', () => {
+  const catalogue = {
+    instruments: [
+      { instrumentId: 'INFY', events: 1, largestMoveBps: 2000 },
+      { instrumentId: 'RELIANCE', events: 2, largestMoveBps: 989 },
+    ],
+  };
+
+  const infyTimeline: ReplayResponse = {
+    instrumentId: 'INFY',
+    timeline: [
+      {
+        eventId: 'i-1',
+        sequence: 1,
+        instrumentId: 'INFY',
+        direction: 'decline',
+        fromPrice: 150_000,
+        toPrice: 120_000,
+        magnitudeBps: 2000,
+        occurredAt: 1_700_000_000_000,
+      },
+    ],
+  };
+
+  function stubBoth() {
+    const spy = vi.fn((url: string) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify(
+            url.includes('replay/instruments')
+              ? catalogue
+              : url.includes('RELIANCE')
+                ? goldenTimeline
+                : infyTimeline,
+          ),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      ),
+    );
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  it('opens on the biggest story when it is not told which one', async () => {
+    stubBoth();
+    render(<ReplayView stepIntervalMs={5} />);
+
+    // The endpoint returns them largest-move first, so the first option is the
+    // one worth opening on. Nothing here picks an instrument by name.
+    // A type argument, not an assertion: §4 avoids both `as T` and `!`, and
+    // findByRole is generic precisely so the element type can be stated.
+    const select = await screen.findByRole<HTMLSelectElement>('combobox');
+    expect(select.value).toBe('INFY');
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    // Nothing is revealed until the reviewer steps, so the cursor starts here.
+    expect(screen.getByText('Before you left')).toBeDefined();
+  });
+
+  it('loads the chosen story and resets the cursor', async () => {
+    stubBoth();
+    render(<ReplayView stepIntervalMs={5} />);
+    await screen.findByRole('combobox');
+
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    expect(await screen.findByText(/Fell 20\.00%/)).toBeDefined();
+    expect(screen.getByText('Where it ended')).toBeDefined();
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'RELIANCE' } });
+
+    // A new story starts at the beginning. Carrying the old cursor over would
+    // reveal a different instrument's events at a position that means nothing.
+    expect(await screen.findByText('Before you left')).toBeDefined();
+    expect(screen.queryByText(/Fell 20\.00%/)).toBeNull();
+  });
+
+  it('never names a user, whichever story is chosen', async () => {
+    const spy = stubBoth();
+    render(<ReplayView stepIntervalMs={5} />);
+    await screen.findByRole('combobox');
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'RELIANCE' } });
+    await screen.findByText('Before you left');
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    await screen.findByText(/Fell 9\.00%/);
+
+    // R5 at the client boundary: adding a picker must not be the thing that
+    // quietly makes replay per-user.
+    expect(spy.mock.calls.every(([url]) => !url.includes('userId'))).toBe(true);
+  });
+});
