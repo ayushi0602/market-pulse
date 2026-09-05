@@ -35,6 +35,24 @@ export interface DemoInstrument {
   readonly note: string;
 }
 
+/**
+ * Which instrument every other event is classified against.
+ *
+ * A single named constant rather than a field on the entry, because exactly
+ * one module (`classifySignal`'s caller) needs to know which symbol is
+ * special, and a constant keeps that decision in one place instead of a
+ * `role` field every reader of `CATALOGUE` would otherwise have to consider.
+ *
+ * The benchmark is tracked and simulated exactly like any other instrument --
+ * same significance rule, same simulator loop, no special-cased engine path
+ * (I3 stays intact). What is special is what the *server* does with it: the
+ * seed does not add it to anyone's watchlist (it is market context, not
+ * something to follow), and the attention feed does not count its own events
+ * as things to read (a benchmark moving is not, by itself, something that
+ * happened to an instrument the user cares about).
+ */
+export const BENCHMARK_SYMBOL = 'NIFTY';
+
 /*
  * Three profiles, tuned by measurement rather than by feel.
  *
@@ -51,6 +69,17 @@ const NORMAL = { volatility: 0.0045, reversion: 0.04 } as const;
 const LIVELY = { volatility: 0.007, reversion: 0.06 } as const;
 
 export const CATALOGUE: readonly DemoInstrument[] = Object.freeze([
+  {
+    symbol: BENCHMARK_SYMBOL,
+    // One clear decline, one partial recovery -- enough for other events to be
+    // compared against without the benchmark's own story dominating the feed.
+    // Chosen (and verified by simulation) so RELIANCE's decline lands
+    // market-wide, INFY's -20% lands as a clear outlier, and RELIANCE's own
+    // recovery -- which outpaces this rebound -- lands as an outlier too.
+    openingPath: [18000, 17800, 16740, 17200, 17600],
+    ...NORMAL,
+    note: 'the benchmark — other events are read against it, never itself read',
+  },
   {
     symbol: 'RELIANCE',
     // The golden scenario. Falls 9%, recovers 9.89%, ends exactly where it began.

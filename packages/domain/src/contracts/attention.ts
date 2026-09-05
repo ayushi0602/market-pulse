@@ -1,4 +1,5 @@
 import type { MarketDirection } from '../market/event.js';
+import type { SignalClassification } from '../market/signal-context.js';
 
 /**
  * Wire contracts for the attention feed.
@@ -28,6 +29,16 @@ export interface FeedEvent {
   /** Always positive. `direction` carries the sign. */
   readonly magnitudeBps: number;
   readonly occurredAt: number;
+  /**
+   * Was this specific to the instrument, or part of a wider move?
+   *
+   * `undefined` for the benchmark instrument's own events -- comparing it
+   * against itself would be circular, so the server does not attempt it.
+   * Every other event gets a verdict, computed against the benchmark's history
+   * at the time this event occurred, never against what the benchmark did
+   * afterward.
+   */
+  readonly signalContext: SignalClassification | undefined;
 }
 
 export interface FeedInstrumentSummary {

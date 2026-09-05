@@ -220,3 +220,69 @@ describe('F5: the feed ranking is deterministic', () => {
     }
   });
 });
+
+describe('SC: signal context is computed against the benchmark, not the watchlist', () => {
+  const NIFTY = instrumentId('NIFTY');
+
+  it('excludes the benchmark from the feed entirely', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // A move big enough to be "meaningful" if it were treated like any other
+    // instrument -- the point of this test is that it is not.
+    store.append(observeTicks(ticks(NIFTY, [100, 90])).events);
+
+    const body = await feed('alice');
+    expect(body.events.some((e) => e.instrumentId === 'NIFTY')).toBe(false);
+    expect(body.summary.instruments.some((i) => i.instrumentId === 'NIFTY')).toBe(false);
+    // The RELIANCE/INFY events seeded in beforeEach are still there -- the
+    // benchmark is excluded, not the whole feed.
+    expect(body.events.length).toBeGreaterThan(0);
+  });
+
+  it('classifies a stock event as market-wide when the benchmark moved the same way first', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // NIFTY falls 8% before RELIANCE's own 9% decline in the golden scenario.
+    store.append(observeTicks(ticks(NIFTY, [100, 92])).events);
+
+    const body = await feed('alice');
+    const decline = body.events.find(
+      (e) => e.instrumentId === 'RELIANCE' && e.direction === 'decline',
+    );
+    expect(decline?.signalContext).toBe('market-wide');
+  });
+
+  it('classifies a stock event as an outlier when it moved far more than the benchmark', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // NIFTY dips a modest 6%; INFY's already-seeded -20% dwarfs it.
+    store.append(observeTicks(ticks(NIFTY, [100, 94])).events);
+
+    const body = await feed('alice');
+    const infyDecline = body.events.find((e) => e.instrumentId === 'INFY');
+    expect(infyDecline?.signalContext).toBe('outlier');
+  });
+
+  it('classifies a stock event as stock-specific when the benchmark has no comparable move', async () => {
+    // No NIFTY events seeded at all -- nothing to compare against.
+    const body = await feed('alice');
+    for (const event of body.events) {
+      expect(event.signalContext).toBe('stock-specific');
+    }
+  });
+
+  it('does not classify against a benchmark move that happens after the event (SC1)', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // NIFTY's decline is recorded well after RELIANCE's -- a route that
+    // ignored timing and just asked "does the benchmark have any decline
+    // anywhere" would wrongly call this market-wide.
+    store.append(
+      observeTicks(
+        ticks(NIFTY, [100, 90]).map((t, i) => ({ ...t, at: START + 20 * 60_000 + i * 60_000 })),
+      ).events,
+    );
+
+    const body = await feed('alice');
+    const decline = body.events.find(
+      (e) => e.instrumentId === 'RELIANCE' && e.direction === 'decline',
+    );
+    expect(decline?.signalContext).toBe('stock-specific');
+  });
+});

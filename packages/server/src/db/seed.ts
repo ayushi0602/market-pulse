@@ -7,7 +7,7 @@ import { createEventStore } from '../modules/market/event-store.js';
 import { createSnapshotStore } from '../modules/market/snapshot-store.js';
 import { createWatchlistStore } from '../modules/watchlist/watchlist-store.js';
 import { createWatermarkStore } from '../modules/attention/watermark-store.js';
-import { CATALOGUE } from '../modules/market/catalogue.js';
+import { BENCHMARK_SYMBOL, CATALOGUE } from '../modules/market/catalogue.js';
 import { uuidEventIds } from '../ids.js';
 
 /**
@@ -100,8 +100,13 @@ for (const entry of CATALOGUE) {
   const first = ticks[0];
   if (last !== undefined && first !== undefined) {
     snapshots.record(first.instrumentId, last.price, last.at);
-    watchlist.add(demo, first.instrumentId);
-    watchlist.add(priya, first.instrumentId);
+    // The benchmark is market context, not something either reader chose to
+    // follow -- it is tracked and simulated like every other instrument, but
+    // it does not go on a watchlist, because nobody asked to watch it.
+    if (entry.symbol !== BENCHMARK_SYMBOL) {
+      watchlist.add(demo, first.instrumentId);
+      watchlist.add(priya, first.instrumentId);
+    }
   }
 
   console.log(

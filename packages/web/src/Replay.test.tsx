@@ -20,6 +20,7 @@ const goldenTimeline: ReplayResponse = {
       toPrice: 263_900,
       magnitudeBps: 900,
       occurredAt: 1_700_000_000_000,
+      signalContext: undefined,
     },
     {
       eventId: 'e-2',
@@ -30,6 +31,7 @@ const goldenTimeline: ReplayResponse = {
       toPrice: 290_000,
       magnitudeBps: 989,
       occurredAt: 1_700_010_000_000,
+      signalContext: undefined,
     },
   ],
 };
@@ -186,6 +188,7 @@ describe('choosing which story to replay', () => {
         toPrice: 120_000,
         magnitudeBps: 2000,
         occurredAt: 1_700_000_000_000,
+        signalContext: undefined,
       },
     ],
   };
@@ -253,5 +256,48 @@ describe('choosing which story to replay', () => {
     // R5 at the client boundary: adding a picker must not be the thing that
     // quietly makes replay per-user.
     expect(spy.mock.calls.every(([url]) => !url.includes('userId'))).toBe(true);
+  });
+});
+
+describe('signal context carries through the cursor', () => {
+  const contextTimeline: ReplayResponse = {
+    instrumentId: 'RELIANCE',
+    timeline: [
+      {
+        eventId: 'e-1',
+        sequence: 1,
+        instrumentId: 'RELIANCE',
+        direction: 'decline',
+        fromPrice: 290_000,
+        toPrice: 263_900,
+        magnitudeBps: 900,
+        occurredAt: 1_700_000_000_000,
+        signalContext: 'market-wide',
+      },
+      {
+        eventId: 'e-2',
+        sequence: 2,
+        instrumentId: 'RELIANCE',
+        direction: 'advance',
+        fromPrice: 263_900,
+        toPrice: 290_000,
+        magnitudeBps: 989,
+        occurredAt: 1_700_010_000_000,
+        signalContext: 'outlier',
+      },
+    ],
+  };
+
+  it('shows the tag for the revealed event, looked up by sequence rather than lost in the round trip', async () => {
+    await renderReplay(contextTimeline);
+
+    // toRecord/toFeedEvent, used to feed the domain cursor and StoryPath,
+    // carry no signalContext -- if the tag came from that reconstruction
+    // instead of the original response, this would render nothing.
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    expect(screen.getByText('Market-wide')).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: /Next/ }));
+    expect(screen.getByText('Outlier')).toBeDefined();
   });
 });

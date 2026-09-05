@@ -42,6 +42,7 @@ const goldenFeed: AttentionFeedResponse = {
       toPrice: 290_000,
       magnitudeBps: 989,
       occurredAt: 1_700_000_000_000,
+      signalContext: undefined,
     },
     {
       eventId: 'e-1',
@@ -52,6 +53,7 @@ const goldenFeed: AttentionFeedResponse = {
       toPrice: 263_900,
       magnitudeBps: 900,
       occurredAt: 1_699_990_000_000,
+      signalContext: undefined,
     },
   ],
 };
@@ -265,6 +267,7 @@ describe('ranking and narrative are separated', () => {
         toPrice: 120_000,
         magnitudeBps: 2000,
         occurredAt: 1_700_020_000_000,
+        signalContext: undefined,
       },
       ...goldenFeed.events,
     ],
@@ -338,6 +341,114 @@ describe('the significance rule is visible, not implied', () => {
   });
 });
 
+describe('signal context: is this specific to the instrument, or wider?', () => {
+  const contextFeed: AttentionFeedResponse = {
+    userId: 'demo',
+    sinceSequence: 0,
+    throughSequence: 3,
+    summary: {
+      meaningfulChanges: 3,
+      instruments: [
+        {
+          instrumentId: 'RELIANCE',
+          priceWhenLastSeen: 290_000,
+          latestPrice: 263_900,
+          netChangeBps: -900,
+          meaningfulChanges: 1,
+        },
+        {
+          instrumentId: 'INFY',
+          priceWhenLastSeen: 150_000,
+          latestPrice: 120_000,
+          netChangeBps: -2000,
+          meaningfulChanges: 1,
+        },
+        {
+          instrumentId: 'TATAMOTORS',
+          priceWhenLastSeen: 78_000,
+          latestPrice: 82_000,
+          netChangeBps: 513,
+          meaningfulChanges: 1,
+        },
+      ],
+    },
+    events: [
+      {
+        eventId: 'e-outlier',
+        sequence: 3,
+        instrumentId: 'INFY',
+        direction: 'decline',
+        fromPrice: 150_000,
+        toPrice: 120_000,
+        magnitudeBps: 2000,
+        occurredAt: 1_700_000_000_000,
+        signalContext: 'outlier',
+      },
+      {
+        eventId: 'e-market-wide',
+        sequence: 2,
+        instrumentId: 'RELIANCE',
+        direction: 'decline',
+        fromPrice: 290_000,
+        toPrice: 263_900,
+        magnitudeBps: 900,
+        occurredAt: 1_700_000_000_000,
+        signalContext: 'market-wide',
+      },
+      {
+        eventId: 'e-specific',
+        sequence: 1,
+        instrumentId: 'TATAMOTORS',
+        direction: 'advance',
+        fromPrice: 78_000,
+        toPrice: 82_000,
+        magnitudeBps: 513,
+        occurredAt: 1_700_000_000_000,
+        signalContext: 'stock-specific',
+      },
+    ],
+  };
+
+  it('shows a glanceable tag for market-wide and outlier, but not for stock-specific', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : contextFeed));
+    const { container } = render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    // Scoped to the .context-tag class rather than by text: "Why is this
+    // significant?" keeps its content in the DOM even collapsed (a project
+    // convention, not an oversight), and it spells out the same words --
+    // an unscoped getByText would match the tag and the hidden disclosure
+    // row both.
+    const tags = [...container.querySelectorAll('.context-tag')].map((el) => el.textContent);
+    expect(tags).toContain('Outlier');
+    expect(tags).toContain('Market-wide');
+    // stock-specific is the base rate, and gets no tag -- only the two
+    // exceptional cases are glanceable, per ContextTag's own reasoning.
+    expect(tags).toHaveLength(2);
+  });
+
+  it('spells out every classification, including stock-specific, inside the disclosure', async () => {
+    stubFetch((url) => (url.includes('watchlist') ? emptyWatchlist : contextFeed));
+    render(<App />);
+    await openAttentionTab();
+    await screen.findByRole('heading', { name: 'While you were away' });
+
+    const disclosures = screen.getAllByText('Why is this significant?');
+    for (const summary of disclosures) {
+      fireEvent.click(summary);
+    }
+
+    const panels = disclosures.map((s) => s.closest('details'));
+    const texts = panels.map((p) => p?.textContent ?? '');
+    expect(texts.some((t) => t.includes('Market context') && t.includes('Outlier'))).toBe(true);
+    expect(texts.some((t) => t.includes('Market context') && t.includes('Market-wide'))).toBe(true);
+    expect(texts.some((t) => t.includes('Market context') && t.includes('Stock-specific'))).toBe(
+      true,
+    );
+  });
+});
+
 describe('the wording never claims more than the events do', () => {
   const rally: AttentionFeedResponse = {
     userId: 'demo',
@@ -365,6 +476,7 @@ describe('the wording never claims more than the events do', () => {
         toPrice: 82_000,
         magnitudeBps: 513,
         occurredAt: 1_699_990_000_000,
+        signalContext: undefined,
       },
       {
         eventId: 'r-2',
@@ -375,6 +487,7 @@ describe('the wording never claims more than the events do', () => {
         toPrice: 89_000,
         magnitudeBps: 854,
         occurredAt: 1_700_000_000_000,
+        signalContext: undefined,
       },
     ],
   };

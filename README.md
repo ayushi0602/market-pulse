@@ -90,7 +90,7 @@ they do.
 
 ```bash
 npm install
-npm run db:seed     # 12 instruments, 18 events, two readers
+npm run db:seed     # 12 followed instruments + 1 benchmark, 20 events, two readers
 npm run dev
 ```
 
@@ -111,9 +111,15 @@ is quiet, and it is still here.
 Instruments are ordered by their largest move — INFY's genuine 20% fall leads at
 seed time — and each instrument's own events run in the order they happened.
 Compare **TATAMOTORS**, which only ever *rose*, with **RELIANCE**, which
-*recovered*: the wording is derived from the story, never assumed. Open **Why is
-this significant?** on any event to see the anchor, the move and the threshold
-that fired.
+*recovered*: the wording is derived from the story, never assumed. Notice the
+small **Outlier** tag on INFY: every event is also checked against a market
+benchmark, so a move that happens to the whole market reads differently from
+one that happens to a single stock — see **RELIANCE**, whose decline is tagged
+**Market-wide** while its own recovery is tagged **Outlier**, because it
+bounced back harder than the index did. Open **Why is this significant?** on
+any event to see the anchor, the move, the threshold that fired, and the
+market-context verdict spelled out in full — including the quiet majority of
+events that are simply specific to the stock and get no tag at all.
 
 **4 — Toggle to *Traditional watchlist*.** Same data, same moment:
 
@@ -169,6 +175,15 @@ product exists to point out.
 functions over plain values — no clock, no database, no framework. `domain`
 cannot import Express, React, or even a `node:` built-in, and ESLint enforces it.
 
+**Significance and context are separate questions, computed separately.**
+Whether a move crosses the threshold is decided by folding one instrument's own
+ticks (I3: no other instrument exists to the engine). Whether that move is
+specific to the instrument or shared by the whole market is a second, later
+step over recorded events, comparing against one benchmark instrument. Keeping
+them apart means the engine never needed to change, and the classification
+function is simple enough to guarantee — structurally, not by convention — that
+it can never judge an event using a benchmark move that hadn't happened yet.
+
 More detail, including what was deliberately *not* built, is in
 [ARCHITECTURE.md](ARCHITECTURE.md) and [CUT_LIST.md](CUT_LIST.md).
 
@@ -191,6 +206,13 @@ Stated plainly, because they affect what the system can honestly claim.
   nobody is measuring in exchange for a connection lifecycle to maintain.
 - **Quiet instruments show no percentage.** There is no baseline to compute a
   day-change from, so none is shown. The alternative was inventing a number.
+- **One benchmark, one threshold for it too.** NIFTY is a single simulated
+  instrument, classified by the same 5% rule as everything else — a real
+  benchmark comparison would use an index feed and likely a different
+  threshold for it, since an index moves less than an individual stock day to
+  day. `OUTLIER_FACTOR` (1.5×) is a placeholder in the same spirit as the
+  significance threshold: legible for tests, not calibrated against a real
+  market.
 - **Significance is one threshold (5%).** Not calibrated against real market
   behaviour; volatility-relative significance is a real refinement and is not
   built.
@@ -220,6 +242,9 @@ named block:
   not moved.
 - **The simulation is reproducible** — seeded PRNG, so the same seed writes the
   same history twice, and a failure can be replayed.
+- **A classification cannot see the future.** `classifySignal` may be handed a
+  benchmark event recorded after the one being classified; the verdict is
+  identical whether that future event is present in the array or not.
 
 These are checked by mutation: the threshold comparison, the anchor,
 re-anchoring, log freezing, `MAX` in the watermark upsert and more were each

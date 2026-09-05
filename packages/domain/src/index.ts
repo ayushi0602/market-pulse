@@ -27,6 +27,9 @@ export { eventId, sequentialIds } from './market/event-id.js';
 export type { MarketTick } from './market/tick.js';
 export type { MarketDirection, MeaningfulMarketEvent } from './market/event.js';
 
+export type { SignalClassification } from './market/signal-context.js';
+export { classifySignal, OUTLIER_FACTOR } from './market/signal-context.js';
+
 export type { MarketState, Observation, SignificanceRule } from './market/significance.js';
 export { DEFAULT_RULE, initialState, observeTick, observeTicks } from './market/significance.js';
 

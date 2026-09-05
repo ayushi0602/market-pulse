@@ -1,18 +1,26 @@
 import { Router } from 'express';
 import type {
   FeedEvent,
+  MeaningfulMarketEvent,
   RecordedMarketEvent,
   ReplayCatalogueResponse,
   ReplayResponse,
 } from '@market-pulse/domain';
-import { instrumentId } from '@market-pulse/domain';
+import { classifySignal, instrumentId } from '@market-pulse/domain';
+import { BENCHMARK_SYMBOL } from '../market/catalogue.js';
 import type { EventStore } from '../market/event-store.js';
 
 export interface ReplayRoutesDeps {
   events: EventStore;
 }
 
-function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
+const BENCHMARK = instrumentId(BENCHMARK_SYMBOL);
+
+function toFeedEvent(
+  record: RecordedMarketEvent,
+  benchmarkHistory: readonly MeaningfulMarketEvent[],
+): FeedEvent {
+  const isBenchmark = record.event.instrumentId === BENCHMARK;
   return {
     eventId: record.eventId,
     sequence: record.sequence,
@@ -22,6 +30,12 @@ function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
     toPrice: record.event.toPrice,
     magnitudeBps: record.event.magnitudeBps,
     occurredAt: record.event.occurredAt,
+    // The whole benchmark history is passed in regardless of where the client's
+    // cursor happens to be -- classifySignal's own occurredAt filter is what
+    // keeps an early event from being judged by a later benchmark move (SC1),
+    // so replay does not need a second mechanism to avoid rewriting history
+    // with hindsight the reader did not have at the time.
+    signalContext: isBenchmark ? undefined : classifySignal(record.event, benchmarkHistory),
   };
 }
 
@@ -48,10 +62,13 @@ export function createReplayRoutes({ events }: ReplayRoutesDeps): Router {
     }
 
     const instrument = instrumentId(raw);
+    const benchmarkHistory = events.readAfter(0, BENCHMARK).map((record) => record.event);
     const body: ReplayResponse = {
       instrumentId: instrument,
       // From position 0: the whole story, independent of any user's watermark.
-      timeline: events.readAfter(0, instrument).map(toFeedEvent),
+      timeline: events
+        .readAfter(0, instrument)
+        .map((record) => toFeedEvent(record, benchmarkHistory)),
     };
     res.json(body);
   });

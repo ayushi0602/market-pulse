@@ -951,3 +951,54 @@ those are very different amounts of scope. The user chose the header.
 
 Gate: `npm run verify` green — 218 tests, 21 files, unchanged in count. No
 overflow at 390 / 768 / 900px, including the two-row header, verified over CDP.
+
+---
+
+## Iteration 11 — signal context
+
+The user proposed a large feature set ("Signal Context + Attention
+Compression", plus ~40 edge cases) framed as coming from an existing research
+document. The repository was searched for every distinctive term first
+(`relative_strength`, `DISPUTED`, `STALE`, corporate actions, NIFTY) — none
+existed anywhere. Asked directly, and the user confirmed: no document, it was
+their own synthesis. Given three options (write it up only, build the core
+classification, build everything as proposed), the user chose the middle one.
+
+**Built:** `classifySignal(event, benchmarkEvents)` in a new
+`domain/market/signal-context.ts` — a pure function, separate from the
+significance engine, answering "was this specific to the instrument, or part
+of a wider move?" against one benchmark instrument (NIFTY, added to the demo
+catalogue). Three verdicts: `market-wide`, `outlier`, `stock-specific`
+(the honest default when there's no comparable benchmark move to point to).
+
+**SC1** — classification cannot see the future — is enforced inside the
+function itself (it discards any benchmark event later than the one being
+classified), not by caller discipline. Both `attention.routes.ts` and
+`replay.routes.ts` pass the benchmark's whole history to every event and get
+correct, timing-respecting verdicts with no per-event slicing.
+
+**The benchmark is tracked like any instrument, followed by nobody:** it goes
+through the ordinary simulator and significance engine (no special-casing),
+but the seed doesn't add it to either demo user's watchlist, and the attention
+feed excludes its own events from what counts as "unread" — without that
+exclusion, a 13th unfollowed instrument would have inflated "N meaningful
+changes across N instruments" for everyone.
+
+**Demo data verified before being written down**, same discipline as Phase 9:
+a throwaway script confirmed RELIANCE's decline lands `market-wide`, its own
+recovery lands `outlier` (bounced back harder than the index), and INFY's -20%
+lands `outlier` against NIFTY's -7% — a coherent story, not a forced example.
+
+**UI:** a small tag, shown only for `market-wide`/`outlier` — `stock-specific`
+is the majority case and tagging it would repeat the "twenty repeated lines"
+mistake from Phase 8. It's still spelled out in full inside "Why is this
+significant?", so absence of a tag is never the only way to learn the market
+was calm. Replay shows the same tag via a sequence-keyed lookup against the
+original response, since `signalContext` doesn't survive the round trip
+through the domain's `RecordedMarketEvent` shape (correctly — it's wire-only).
+
+Gate: `npm run verify` green — **240 tests, 22 files** (+22: 11 domain, 5
+attention-feed integration, 3 replay integration, 3 web). No overflow at 390 or
+1000px, verified live: NIFTY tracked and simulated, absent from every
+watchlist, absent from the feed, and correctly classified against in both the
+feed and replay.

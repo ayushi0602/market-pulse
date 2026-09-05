@@ -119,3 +119,48 @@ describe('R2: replay responses are deterministic', () => {
     }
   });
 });
+
+describe('SC: replay carries the same signal context as the feed', () => {
+  const NIFTY = instrumentId('NIFTY');
+
+  it("classifies replayed events against the benchmark, at each event's own time", async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // NIFTY falls first, comparably to RELIANCE's decline in the golden
+    // scenario -- market-wide -- then nothing else, so RELIANCE's later
+    // recovery has no matching benchmark move and reads as stock-specific.
+    store.append(observeTicks(ticks(NIFTY, [100, 92])).events);
+
+    const timeline = (await replay('RELIANCE')).timeline;
+    const decline = timeline.find((e) => e.direction === 'decline');
+    const recovery = timeline.find((e) => e.direction === 'advance');
+    expect(decline?.signalContext).toBe('market-wide');
+    expect(recovery?.signalContext).toBe('stock-specific');
+  });
+
+  it('gives the benchmark itself no signal context', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    store.append(observeTicks(ticks(NIFTY, [100, 90])).events);
+
+    const timeline = (await replay('NIFTY')).timeline;
+    expect(timeline.length).toBeGreaterThan(0);
+    for (const event of timeline) {
+      expect(event.signalContext).toBeUndefined();
+    }
+  });
+
+  it('does not let a future benchmark event change the verdict on an earlier one (SC1)', async () => {
+    const store = createEventStore(db, sequentialIds('sc'), clock);
+    // The whole point of R1/R2: replaying later must not rewrite what an
+    // earlier event's classification was. A benchmark decline recorded after
+    // RELIANCE's own decline must not retroactively make it market-wide.
+    store.append(
+      observeTicks(
+        ticks(NIFTY, [100, 90]).map((t, i) => ({ ...t, at: START + 20 * 60_000 + i * 60_000 })),
+      ).events,
+    );
+
+    const timeline = (await replay('RELIANCE')).timeline;
+    const decline = timeline.find((e) => e.direction === 'decline');
+    expect(decline?.signalContext).toBe('stock-specific');
+  });
+});

@@ -147,6 +147,7 @@ ARCHITECTURE.md records how each one holds:
 | **F1–F5** | The feed: reading never acknowledges, acknowledging is monotonic, the feed is scoped to the watermark, ranking is deterministic |
 | **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
 | **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
+| **SC1** | Signal context: a benchmark event after the one being classified cannot affect its verdict — enforced inside `classifySignal` itself, not by a caller convention |
 
 The simulator has its own block in `packages/server/test/simulation.test.ts`. It
 asserts the thing that actually matters about generated data: that it gets no
@@ -365,6 +366,71 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-05 — Phase 11: signal context
+
+The user proposed a much larger feature set framed as coming from "the actual
+research document." Before writing anything, the repository was searched for
+every term in the proposal (`relative_strength`, `DISPUTED`, `STALE`/`CLOSED`,
+corporate actions, NIFTY, market-wide, attention compression) — none existed
+anywhere, and the user confirmed there was no document: it was their own
+synthesis, presented with more authority than it had. **Verify before building
+on a claimed source, even when the claim comes from the user** — asking "where
+does this live" cost one exchange and avoided building roughly fifteen
+unscoped subsystems on a premise that did not exist. Offered three concrete
+options rather than picking one; the user chose the smallest: one benchmark
+instrument, one classification, no data-quality states, no attention
+compression.
+
+**What was built.** `domain/market/signal-context.ts`: `classifySignal(event,
+benchmarkEvents)` -> `'market-wide' | 'outlier' | 'stock-specific'`. A
+*separate*, later function over recorded events, not a change to the
+significance engine -- the engine stays a pure fold over one instrument's own
+ticks (I3), and classification is the next question asked afterward, over two
+instruments' histories. Absence of a comparable benchmark move is not evidence
+of a market-wide move; it is evidence of nothing, and defaults to
+`stock-specific` rather than an invented middle state.
+
+**SC1 is structural, the same way R1/R5 are.** The function accepts the
+benchmark's *entire* history, including events after the one being classified,
+and filters to `occurredAt <=` internally. A caller cannot get this wrong by
+handing it too much data -- there is no slice a route or a test could
+mis-compute. Replay and the live feed call it identically, with no separate
+"don't use future context" logic in either route, because the guarantee lives
+in the one function both of them call.
+
+**NIFTY is a `BENCHMARK_SYMBOL` constant in `catalogue.ts`, not a `role` field
+on every entry** -- exactly one caller needs to know which instrument is
+special. Tracked and simulated exactly like every other instrument (no engine
+special-casing); excluded from the seed's watchlist adds (it is market context,
+not something either reader chose to follow) and from the attention feed's
+`unread` (a benchmark move is not, itself, something to read) -- both in
+`attention.routes.ts`, both a few lines, both necessary for "12 instruments
+followed, N need your attention" to stay honest with a 13th, unfollowed
+instrument in the shared log.
+
+**The demo catalogue's shape emerged, not fabricated:** RELIANCE's decline
+lands `market-wide` (NIFTY fell too), RELIANCE's own recovery lands `outlier`
+(it bounced back harder than the index did), INFY's -20% lands `outlier`
+against NIFTY's -7%. This was verified by a throwaway script before committing
+NIFTY's price path, the same way the original catalogue's event counts were
+verified in Phase 9 -- **tune demo data by measuring the actual output, not by
+assuming a hand-picked path produces the story you intended.**
+
+**UI:** a small `ContextTag`, visible only for `market-wide`/`outlier` --
+`stock-specific` is the base rate, and tagging the majority of events would
+repeat the "you were not watching, twenty times" mistake from Phase 8.
+`stock-specific` still gets spelled out in full, in plain language, inside
+"Why is this significant?" — absence of a tag must never be the only way a
+reader learns the market was calm. Replay shows the same tag, looked up by
+`sequence` from the original response: `toRecord`/`toFeedEvent`'s round trip
+through the domain shape has nowhere to carry `signalContext` (it is wire-only,
+not part of `MeaningfulMarketEvent`), so the lookup reads the untouched
+response rather than the reconstructed cursor state.
+
+Gate: `npm run verify` green — 240 tests, 22 files (+22 from Phase 10b: 11
+domain, 5 attention-feed integration, 3 replay integration, 3 web). No overflow
+at 390 or 1000px, including the tag wrapping at phone width.
 
 ### 2026-09-05 — Phase 10b: site chrome
 

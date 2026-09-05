@@ -1,4 +1,4 @@
-import type { AttentionFeedResponse, FeedEvent } from '@market-pulse/domain';
+import type { AttentionFeedResponse, FeedEvent, SignalClassification } from '@market-pulse/domain';
 import { DEFAULT_RULE } from '@market-pulse/domain';
 import { formatPercent, formatPrice, formatTime, pluralise } from './format.js';
 import { StoryPath } from './StoryPath.jsx';
@@ -70,6 +70,42 @@ export function moveLabel(
 }
 
 /**
+ * Is this glanceable, or does it only earn a place in the disclosure?
+ *
+ * `stock-specific` is the base rate -- most moves are specific to the
+ * instrument that made them, and saying so on every card would be the exact
+ * mistake already made once with "you were not watching" repeated twenty
+ * times. It still gets a full, plain-language row inside "Why is this
+ * significant?", because absence of a tag should never be the only way a
+ * reader learns the market was calm. The two informative cases -- a move
+ * that is not unique to this instrument, or one far larger than the
+ * market's own -- surface here, where they are actually the exception.
+ */
+export function ContextTag({ context }: { context: SignalClassification | undefined }) {
+  if (context === undefined || context === 'stock-specific') return null;
+  const label = context === 'market-wide' ? 'Market-wide' : 'Outlier';
+  return <span className={`context-tag context-tag-${context}`}>{label}</span>;
+}
+
+/**
+ * Puts the classification in plain words, using the same benchmark numbers a
+ * reader could check for themselves. Written once so the feed and replay's
+ * disclosure never drift into describing the same verdict differently.
+ */
+function contextExplanation(context: SignalClassification | undefined): string {
+  switch (context) {
+    case 'market-wide':
+      return 'The benchmark moved the same way by a comparable amount at the time — this instrument was doing what the wider market was doing.';
+    case 'outlier':
+      return 'The benchmark moved the same way, but by far less — this instrument moved well beyond what the wider market did.';
+    case 'stock-specific':
+      return 'The benchmark either moved the other way or had no comparable move recorded at the time — as far as this system knows, this was specific to the instrument.';
+    case undefined:
+      return 'This is the benchmark itself, so it is not compared against anything.';
+  }
+}
+
+/**
  * Why the system judged this worth surfacing.
  *
  * The brief left "what counts as meaningful" to us, so the threshold should not
@@ -105,6 +141,19 @@ function WhySignificant({ event }: { event: FeedEvent }) {
           {formatPrice(event.toPrice)}. It records the move that crossed the threshold — not the
           full run, if the price kept going.
         </p>
+        <div className="why-row">
+          <span>Market context</span>
+          <b>
+            {event.signalContext === undefined
+              ? 'Not applicable'
+              : event.signalContext === 'market-wide'
+                ? 'Market-wide'
+                : event.signalContext === 'outlier'
+                  ? 'Outlier'
+                  : 'Stock-specific'}
+          </b>
+        </div>
+        <p className="why-note">{contextExplanation(event.signalContext)}</p>
       </div>
     </details>
   );
@@ -141,7 +190,8 @@ export function AttentionFeed({ feed }: { feed: AttentionFeedResponse }) {
                 </div>
                 <div className="story-event-body">
                   <p className="headline">
-                    {moveLabel(story.events, index)} {formatPercent(event.magnitudeBps, false)}
+                    {moveLabel(story.events, index)} {formatPercent(event.magnitudeBps, false)}{' '}
+                    <ContextTag context={event.signalContext} />
                   </p>
                   <div className="prices">
                     {formatPrice(event.fromPrice)} → {formatPrice(event.toPrice)}

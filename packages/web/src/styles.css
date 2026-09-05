@@ -871,6 +871,48 @@ button.link.quiet:hover {
   line-height: 1.5;
 }
 
+/* ---------- signal context: is this specific to the instrument? ---------- */
+
+/*
+ * Absent for the common case (stock-specific) by design -- see ContextTag's
+ * own comment. The two tags that do render are deliberately different weights:
+ * market-wide is informational (a soft, neutral badge -- "you don't need to
+ * treat this as unique"), outlier is the one worth a glance (the accent
+ * colour, the same one the story-tick end-marker and "Why is this
+ * significant?" use once opened, so it reads as "look here" without
+ * introducing a fourth colour to the palette).
+ */
+.context-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.0625rem 0.4375rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.context-tag-market-wide {
+  background: var(--surface-sunken);
+  color: var(--muted);
+}
+
+/*
+ * Coloured with --accent, not --advance/--decline: an outlier can be a
+ * decline (INFY falling further than the market) just as easily as an
+ * advance, so this has to mean "look here," not "this is good news." --accent
+ * and --advance-fill happen to share a hex value in this palette, which is why
+ * --advance-soft is reused for the tint -- there is no separate "brand tint"
+ * token, and inventing one for a single background would be a token with one
+ * caller.
+ */
+.context-tag-outlier {
+  background: var(--advance-soft);
+  color: var(--accent);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .why summary::before {
     transition: none;

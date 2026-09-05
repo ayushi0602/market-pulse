@@ -12,7 +12,7 @@ import {
   priceAtCursor,
   revealed,
 } from '@market-pulse/domain';
-import { moveLabel } from './AttentionFeed.jsx';
+import { ContextTag, moveLabel } from './AttentionFeed.jsx';
 import { fetchReplay, fetchReplayInstruments } from './api.js';
 import { StoryPath } from './StoryPath.jsx';
 import { usePoll } from './usePoll.js';
@@ -34,7 +34,15 @@ function toRecord(event: FeedEvent): RecordedMarketEvent {
   };
 }
 
-/** Back to the wire shape, so the story drawing has one input type. */
+/**
+ * Back to the wire shape, so the story drawing has one input type.
+ *
+ * `signalContext` is not part of the domain event -- it is a derived,
+ * wire-only verdict, computed by the server and never round-tripped through
+ * `RecordedMarketEvent`. `StoryPath` and `moveLabel` do not read it, so
+ * `undefined` here costs nothing; a caller that wants the real verdict reads
+ * it from the original `timeline` response instead (see `contextFor` below).
+ */
 function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
   return {
     eventId: record.eventId,
@@ -45,6 +53,7 @@ function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
     toPrice: record.event.toPrice,
     magnitudeBps: record.event.magnitudeBps,
     occurredAt: record.event.occurredAt,
+    signalContext: undefined,
   };
 }
 
@@ -198,6 +207,11 @@ export function ReplayView({ instrumentId: initial, stepIntervalMs = 1400 }: Rep
   const net = netChangeAtCursor(replay);
   const shown = revealed(replay);
 
+  // The domain-shape `shown` records lost signalContext in the round trip
+  // through toRecord/toFeedEvent; look it up from the original response by
+  // sequence, which is stable and unique per event.
+  const contextBySequence = new Map(timeline.map((e) => [e.sequence, e.signalContext]));
+
   return (
     <div>
       {picker}
@@ -251,7 +265,8 @@ export function ReplayView({ instrumentId: initial, stepIntervalMs = 1400 }: Rep
                   shown.map((r) => toFeedEvent(r)),
                   index,
                 )}{' '}
-                {formatPercent(record.event.magnitudeBps, false)}
+                {formatPercent(record.event.magnitudeBps, false)}{' '}
+                <ContextTag context={contextBySequence.get(record.sequence)} />
               </p>
               <div className="prices">
                 {formatPrice(record.event.fromPrice)} → {formatPrice(record.event.toPrice)}

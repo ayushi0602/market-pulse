@@ -409,6 +409,81 @@ no generator cannot end up behind a page claiming something is updating. The
 `MarketSource` union has exactly two members, `'simulated'` and `'static'`;
 adding `'live'` to it is how an overclaim would start, so it is not there.
 
+## Signal context: is this specific to the instrument, or wider?
+
+A threshold crossing is a fact about one instrument, in isolation — the
+significance engine has no other instrument to compare against, by design
+(I3: it is a pure fold over a single tick stream). *Was the whole market doing
+this* is a real second question, and it is answered as a **separate, later
+step over recorded events**, not folded into the engine:
+
+```
+observeTick (domain, one instrument, pure)
+        ↓
+   RecordedMarketEvent
+        ↓
+classifySignal(event, benchmarkHistory)  ← a second, independent step
+        ↓
+   'market-wide' | 'outlier' | 'stock-specific'
+```
+
+### The rule
+
+`classifySignal` looks at the benchmark's most recent event at or before the
+one being classified:
+
+| Benchmark reference | Verdict |
+| --- | --- |
+| None recorded yet | `stock-specific` — absence of a comparable move is evidence of nothing, not of a market-wide one |
+| Opposite direction | `stock-specific` — a market moving up while this instrument falls is the opposite claim from market-wide |
+| Same direction, comparable magnitude | `market-wide` |
+| Same direction, this instrument's magnitude more than `OUTLIER_FACTOR` (1.5) times the benchmark's | `outlier` |
+
+`stock-specific` is the honest default, not a residual case: most single-stock
+moves genuinely are specific to the stock, and the seeded demo data reflects
+that — 12 of 19 classified events land there.
+
+### SC1: classification cannot see the future
+
+The function may be handed the benchmark's *entire* history, including events
+recorded after the one being classified — it discards anything with a later
+`occurredAt` internally. This is what makes "replay must judge an event by
+what was knowable at the time" a property of the function itself rather than a
+rule every caller has to remember: `attention.routes.ts` and `replay.routes.ts`
+both pass the whole benchmark history to every event they classify, with no
+per-event slicing, and get the correct answer regardless, the same way R1/R5
+are structural because the replay route holds no `WatermarkStore` at all.
+
+### The benchmark is tracked like anything else, and followed by nobody
+
+`BENCHMARK_SYMBOL` (`'NIFTY'`) is a single named constant in `catalogue.ts`,
+not a `role` field every reader of the catalogue would have to consider. It
+goes through the same significance engine, the same simulator loop, no
+special-cased path — I3 stays intact. What is special is what the *server*
+does with it:
+
+- The seed does not add it to either demo user's watchlist. It is market
+  context, not something a reader chose to follow.
+- The attention feed excludes the benchmark's own events from `unread`,
+  `summary`, and the ranked list. A benchmark moving is not, itself, something
+  to read — and without this exclusion, a 13th unfollowed instrument would
+  quietly inflate "N meaningful changes across N instruments" for every seeded
+  user.
+- Replay does **not** exclude it — the benchmark's own story is exactly as
+  legitimate a replay target as any other instrument's, and carving it out
+  there would be the first instance of replay depending on something other
+  than raw event history.
+
+### Demo data, verified before being written down
+
+RELIANCE's decline classifies `market-wide` (NIFTY fell too, comparably);
+RELIANCE's own recovery classifies `outlier` (it bounced back harder than the
+index did); INFY's -20% classifies `outlier` against NIFTY's -7%. None of this
+was designed in the abstract — NIFTY's price path was chosen by running a
+throwaway script against the real `classifySignal` and the real catalogue
+until the distribution looked like a demo worth showing, the same discipline
+Phase 9's volatility tuning used.
+
 ## The market simulator
 
 Generated prices, so the demo moves. **Not ingestion**, and the distinction is

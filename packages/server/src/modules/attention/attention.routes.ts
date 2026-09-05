@@ -3,9 +3,17 @@ import type {
   AcknowledgeResponse,
   AttentionFeedResponse,
   FeedEvent,
+  MeaningfulMarketEvent,
   RecordedMarketEvent,
 } from '@market-pulse/domain';
-import { rankBySignificance, summariseUnread, userId } from '@market-pulse/domain';
+import {
+  classifySignal,
+  instrumentId,
+  rankBySignificance,
+  summariseUnread,
+  userId,
+} from '@market-pulse/domain';
+import { BENCHMARK_SYMBOL } from '../market/catalogue.js';
 import type { EventStore } from '../market/event-store.js';
 import type { WatermarkStore } from './watermark-store.js';
 
@@ -14,7 +22,13 @@ export interface AttentionRoutesDeps {
   watermarks: WatermarkStore;
 }
 
-function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
+const BENCHMARK = instrumentId(BENCHMARK_SYMBOL);
+
+function toFeedEvent(
+  record: RecordedMarketEvent,
+  benchmarkHistory: readonly MeaningfulMarketEvent[],
+): FeedEvent {
+  const isBenchmark = record.event.instrumentId === BENCHMARK;
   return {
     eventId: record.eventId,
     sequence: record.sequence,
@@ -24,6 +38,12 @@ function toFeedEvent(record: RecordedMarketEvent): FeedEvent {
     toPrice: record.event.toPrice,
     magnitudeBps: record.event.magnitudeBps,
     occurredAt: record.event.occurredAt,
+    // Comparing the benchmark against itself is circular, so it gets no
+    // verdict -- undefined, not a fabricated one. Every other event is
+    // classified against the benchmark's full history (not the unread slice:
+    // whether *this user* has seen the benchmark's move is a different
+    // question from whether the market actually moved at the time).
+    signalContext: isBenchmark ? undefined : classifySignal(record.event, benchmarkHistory),
   };
 }
 
@@ -54,7 +74,19 @@ export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDep
 
     const user = userId(rawUser);
     const watermark = watermarks.get(user);
-    const unread = events.readAfter(watermark.lastSeenSequence);
+    // The benchmark's *whole* history, not the unread slice -- classifying a
+    // stock's move asks what the market was doing at the time, which does not
+    // depend on whether this particular user has acknowledged it yet.
+    const benchmarkHistory = events.readAfter(0, BENCHMARK).map((record) => record.event);
+
+    // The benchmark moving is context for other events, not itself a thing to
+    // read: it is not something either seeded user followed, and it has no
+    // signalContext of its own to explain. Excluding it here is what keeps
+    // "12 instruments followed, N need your attention" honest once a 13th,
+    // unfollowed instrument exists in the shared log.
+    const unread = events
+      .readAfter(watermark.lastSeenSequence)
+      .filter((record) => record.event.instrumentId !== BENCHMARK);
 
     const body: AttentionFeedResponse = {
       userId: user,
@@ -73,7 +105,7 @@ export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDep
           meaningfulChanges: summary.meaningfulChanges,
         })),
       },
-      events: rankBySignificance(unread).map(toFeedEvent),
+      events: rankBySignificance(unread).map((record) => toFeedEvent(record, benchmarkHistory)),
     };
 
     res.json(body);
