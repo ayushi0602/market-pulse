@@ -18,8 +18,8 @@ that history **per user**, from where each user last looked.
 Two people opening the app at the same instant should see different things.
 Any design decision that breaks that property is wrong, however clean it looks.
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — domain concepts, boundaries, deferred complexity
-- [CUT_LIST.md](CUT_LIST.md) — what we are deliberately not building
+- [ARCHITECTURE.md](../ARCHITECTURE.md) — domain concepts, boundaries, deferred complexity
+- [CUT_LIST.md](../CUT_LIST.md) — what we are deliberately not building
 - [PROGRESS.md](PROGRESS.md) — status by phase
 - [AUDIT.md](AUDIT.md) — full read of the repository: what exists, why, what the
   audit found, and the strategy from here. Start here if you are picking this up
@@ -82,7 +82,7 @@ The following are settled decisions. Do **not** change them without being asked:
 | Source-consumed packages | TS project references, build-then-import |
 | Modular monolith | Microservices, a broker, Redis |
 
-Each is recorded with reasoning in [ARCHITECTURE.md](ARCHITECTURE.md).
+Each is recorded with reasoning in [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ### 2.6 Bugs get regression tests
 
@@ -284,7 +284,7 @@ proxied so there is no CORS to maintain.
 2. Make the change. Keep the diff to the scope.
 3. Add tests that would fail without the change.
 4. Run `npm run verify`.
-5. Update [PROGRESS.md](PROGRESS.md), and [ARCHITECTURE.md](ARCHITECTURE.md) if
+5. Update [PROGRESS.md](PROGRESS.md), and [ARCHITECTURE.md](../ARCHITECTURE.md) if
    a boundary or decision moved.
 6. **Append an entry to the iteration log below.**
 7. Report honestly: what was built, what was skipped, what is uncertain.

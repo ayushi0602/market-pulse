@@ -43,6 +43,33 @@ answers a question a snapshot cannot:
 Because the answer depends on when *you* last looked, two people opening the app
 at the same moment see different things.
 
+## This is not a hypothetical
+
+The round trip this product is built around is a documented market phenomenon,
+not a scenario invented to make a demo work.
+
+**Prices really do leave and come back.** Baltussen, Da and Soebhag
+([*End-of-Day Reversal*, 2024](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=5039009))
+find that individual stocks show sharp intraday return reversals in the last
+thirty minutes of trading, driven *primarily by intraday losers recovering*.
+A day's change is measured open to close, so it is structurally blind to exactly
+the move that is most likely to have happened.
+
+**And the usual fix makes it worse.** Alerting is the standard answer to "tell
+me what I missed", and alert fatigue is the most commonly cited reason traders
+abandon alerting systems: after a few ignored notifications you have trained
+yourself to dismiss all of them, including the one that mattered. The
+practitioner advice is to alert on *meaningful* thresholds, "not every 1% move".
+
+So Market Pulse **never interrupts you**. The significance rule is the filter —
+5% from a moving anchor — and everything that clears it accumulates in an
+append-only log until you come back. Not notifying is the design, not a gap in
+it.
+
+What this system does *not* yet do is size that threshold to each instrument's
+own volatility, which is where the same practitioner advice points next. That
+limitation is real and is listed below rather than papered over.
+
 ## The product model
 
 Four concepts, each answering a different question. They are not the same list,
