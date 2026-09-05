@@ -15,7 +15,7 @@ simulated, never called live.
 
 <!--
 Counted, not estimated: 98 words from "A price" to "called live", by both a
-plain whitespace split and `wc -w`. Under the brief.s limit on either reading.
+plain whitespace split and `wc -w`. Under the brief's limit on either reading.
 
 Everything above is checkable in the running app. The schema split is migrations
 002 and 003; the watermark is enforced monotonic in SQL rather than in
