@@ -168,6 +168,44 @@ describe('F3: acknowledging a stale position cannot move backwards', () => {
   });
 });
 
+describe('F6: acknowledging cannot advance past events that exist', () => {
+  it('clamps a throughSequence beyond the log head, rather than hiding events that have not been written yet', async () => {
+    // beforeEach seeds exactly 3 events. A client claiming to have read up to
+    // 999 -- a bug, a bad client, or a forged request -- must not be able to
+    // pre-emptively mark the next several hundred future events as read the
+    // instant they are appended. That would silently defeat F4 for anyone who
+    // sends an inflated number, and there is nothing in the wire format that
+    // stops a client from sending one.
+    const response = await request(app)
+      .post('/api/attention-feed/ack')
+      .send({ userId: 'alice', throughSequence: 999 })
+      .expect(200);
+
+    expect(response.body).toEqual({ userId: 'alice', lastSeenSequence: 3 });
+
+    // The proof that matters: a real, not-yet-existing event arriving later
+    // is still shown, not silently treated as already read.
+    const store = createEventStore(db, sequentialIds('later'), clock);
+    store.append(observeTicks(ticks(RELIANCE, [100, 120])).events);
+
+    expect((await feed('alice')).events).toHaveLength(1);
+  });
+
+  it('still clamps correctly when the inflated ack arrives after a legitimate one', async () => {
+    await request(app)
+      .post('/api/attention-feed/ack')
+      .send({ userId: 'alice', throughSequence: 2 })
+      .expect(200);
+
+    const response = await request(app)
+      .post('/api/attention-feed/ack')
+      .send({ userId: 'alice', throughSequence: 50 })
+      .expect(200);
+
+    expect(response.body).toEqual({ userId: 'alice', lastSeenSequence: 3 });
+  });
+});
+
 describe('F4: the feed contains only events after the watermark', () => {
   it('excludes everything already acknowledged', async () => {
     await request(app)

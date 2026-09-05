@@ -145,6 +145,7 @@ ARCHITECTURE.md records how each one holds:
 | Set | Covers |
 | --- | --- |
 | **F1–F5** | The feed: reading never acknowledges, acknowledging is monotonic, the feed is scoped to the watermark, ranking is deterministic |
+| **F6** | Acknowledging cannot advance past events that exist — a client-supplied `throughSequence` is clamped to the real log head before being stored |
 | **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
 | **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
 | **SC1** | Signal context: a benchmark event after the one being classified cannot affect its verdict — enforced inside `classifySignal` itself, not by a caller convention |
@@ -366,6 +367,66 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-05 — Phase 12: full-system regression, and one real bug (F6)
+
+A break-it audit across every phase, not just the newest one: boundary values,
+mutation testing on the rules added in Phase 11, a static import-boundary
+sweep, and a fresh live pass over the running app. Explicitly not a new
+feature pass — no scope was added, nothing was refactored, no test was
+weakened to pass.
+
+**F6, a real gap, fixed.** `POST /attention-feed/ack` validated that
+`throughSequence` was a non-negative integer, but never checked it against
+`events.head()`. A client sending `throughSequence: 999999` against a
+20-event log would have the watermark stored at 999999 — silently marking
+every future event up to that number as already read the instant it was
+appended, for as long as the log stayed under that number. This is a larger,
+silent version of exactly what F1 exists to prevent, reachable by any client
+that sends a bad number, not only a compromised one. Fixed by clamping to
+`events.head()` before storing, using data the route already had in scope —
+no new architecture, the same category of validation the route already did
+for negativity and integer-ness. A failing test was written first
+(`F6: acknowledging cannot advance past events that exist`), then the fix,
+per §2.6.
+
+**One finding reported, not silently fixed.** `POST /watchlist` places no
+restriction on which instrument a user follows, so a user can manually add
+`NIFTY` to their own watchlist via the API — confirmed live, not theoretical.
+It then behaves like any other row (its own price, its own meaningful-change
+count), because `buildWatchlist` receives the unfiltered event log. This means
+"NIFTY cannot appear in a user's watchlist" is true only because the two
+seeded demo users never add it, not because the system prevents it. Whether
+the API should reject this outright is a product decision (should someone be
+allowed to deliberately follow the index?) that touches a route Phase 11 did
+not build for this purpose — reported rather than silently patched, per this
+audit's own instruction to stop at anything requiring a new decision.
+
+**Signal Context (Phase 11) mutation-tested specifically**, since it was the
+newest and least battle-tested code: the SC1 future-filter, the outlier-factor
+comparison operator, the direction-equality check, and the benchmark-exclusion
+filter in `attention.routes.ts` were each broken in turn and confirmed to fail
+the matching tests. Two pre-existing significance-engine invariants (threshold
+`>=`, re-anchoring) were also spot-mutated to confirm Phase 11 changed nothing
+about them.
+
+**Test additions**, all closing checklist items the existing suite didn't yet
+name explicitly: the outlier boundary on both sides (not just the exact
+value), the full stock/benchmark direction-and-magnitude combination grid, a
+zero-magnitude benchmark (confirms no division exists in `classifySignal` to
+produce `NaN`/`Infinity` from), a benchmark that starts after the stock event,
+a benchmark with a gap, and a same-timestamp tie resolved order-independently.
+
+Gate: `npm run verify` green — **255 tests, 22 files** (+15 over Phase 11: 13
+domain boundary/combination tests, 2 F6 route tests). Live E2E re-verified at
+390/768/900/1000px: no overflow, `StoryPath` ticks confirmed vertical
+(`x1 === x2`) via direct SVG attribute inspection, RELIANCE's tags confirmed
+`Market-wide`/`Outlier` exactly as designed, NIFTY confirmed absent from every
+watchlist row and every feed story card while still selectable in Replay (by
+design), the true caught-up empty state and the golden-scenario Play-through
+both re-verified end to end.
+
+### 2026-09-05 — Phase 11: signal context
 
 ### 2026-09-05 — Phase 11: signal context
 

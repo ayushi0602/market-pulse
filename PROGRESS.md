@@ -1002,3 +1002,44 @@ attention-feed integration, 3 replay integration, 3 web). No overflow at 390 or
 1000px, verified live: NIFTY tracked and simulated, absent from every
 watchlist, absent from the feed, and correctly classified against in both the
 feed and replay.
+
+---
+
+## Iteration 12 — full-system regression audit
+
+A break-it pass across every phase, requested explicitly as a regression test
+rather than a feature pass: no new scope, no refactor, no test weakened.
+
+**Found and fixed: F6.** `POST /attention-feed/ack` never checked
+`throughSequence` against the actual log head. A client sending an inflated
+number would have the watermark stored there anyway, silently pre-marking
+every future event up to that number as read the instant it was appended — a
+larger, silent version of the exact bug F1 exists to prevent. Fixed by
+clamping to `events.head()`, the same validation category the route already
+applied to negativity and integer-ness. Test written first, per §2.6.
+
+**Found and reported, not fixed:** `POST /watchlist` has no restriction on
+which instrument a user follows. A user can manually add `NIFTY` to their own
+watchlist (confirmed live against the running API), where it behaves like any
+other row. "NIFTY cannot appear in a watchlist" holds only because the seeded
+users never add it, not because the system prevents it — whether it should be
+rejected outright is a product decision outside this audit's scope to make
+silently.
+
+**Mutation-tested Signal Context specifically**, as the newest code: the SC1
+future-filter, the outlier-factor comparison, the direction check, and the
+benchmark-exclusion filter were each broken and confirmed to fail their tests.
+Two pre-existing significance-engine invariants were spot-mutated too, to
+confirm nothing regressed underneath the new feature.
+
+**13 new domain tests** closed explicit checklist gaps: the outlier boundary
+on both sides, the full direction/magnitude combination grid, a zero-magnitude
+benchmark (no division exists in the function to produce NaN/Infinity), a
+benchmark starting late, a benchmark with a gap, and an order-independent tie.
+
+Gate: `npm run verify` green — **255 tests, 22 files**. Live E2E re-verified at
+390/768/900/1000px — no overflow, StoryPath ticks confirmed vertical by
+direct SVG attribute inspection, RELIANCE's Market-wide/Outlier tags
+confirmed exactly as designed, NIFTY confirmed absent from every watchlist and
+feed card while still a valid Replay target, the golden scenario's Play-through
+re-verified end to end.

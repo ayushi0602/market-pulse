@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { instrumentId } from './instrument.js';
 import { rupees } from './money.js';
-import { classifySignal, OUTLIER_FACTOR, type SignalClassification } from './signal-context.js';
+import { classifySignal, OUTLIER_FACTOR } from './signal-context.js';
+import type { SignalClassification } from './signal-context.js';
 import type { MeaningfulMarketEvent } from './event.js';
 
 const STOCK = instrumentId('RELIANCE');
@@ -173,5 +174,187 @@ describe('purity', () => {
     const move = event({ occurredAt: T0 });
     const benchmarks = Object.freeze([event({ instrumentId: INDEX, occurredAt: T0 - 1 })]);
     expect(() => classifySignal(move, benchmarks)).not.toThrow();
+  });
+});
+
+describe('the outlier boundary, on both sides', () => {
+  it('classifies just below the boundary as market-wide, not outlier', () => {
+    const benchmarkMagnitude = 500;
+    const justBelow = Math.floor(benchmarkMagnitude * OUTLIER_FACTOR) - 1; // 749
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: justBelow });
+    const benchmark = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - 1,
+      direction: 'decline',
+      magnitudeBps: benchmarkMagnitude,
+    });
+    expect(classifySignal(move, [benchmark])).toBe('market-wide');
+  });
+
+  it('classifies just above the boundary as an outlier, not market-wide', () => {
+    const benchmarkMagnitude = 500;
+    const justAbove = Math.ceil(benchmarkMagnitude * OUTLIER_FACTOR) + 1; // 751
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: justAbove });
+    const benchmark = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - 1,
+      direction: 'decline',
+      magnitudeBps: benchmarkMagnitude,
+    });
+    expect(classifySignal(move, [benchmark])).toBe('outlier');
+  });
+});
+
+describe('every direction/magnitude combination', () => {
+  const cases: {
+    stockDirection: MeaningfulMarketEvent['direction'];
+    stockBps: number;
+    benchmarkDirection: MeaningfulMarketEvent['direction'];
+    benchmarkBps: number;
+    expected: SignalClassification;
+  }[] = [
+    // stock -7%, benchmark -4%: same direction, 700/400 = 1.75x -> outlier
+    {
+      stockDirection: 'decline',
+      stockBps: 700,
+      benchmarkDirection: 'decline',
+      benchmarkBps: 400,
+      expected: 'outlier',
+    },
+    // stock -4%, benchmark -7%: same direction, 400/700 well under 1.5x -> market-wide
+    {
+      stockDirection: 'decline',
+      stockBps: 400,
+      benchmarkDirection: 'decline',
+      benchmarkBps: 700,
+      expected: 'market-wide',
+    },
+    // stock +7%, benchmark +4%: same direction, 1.75x -> outlier
+    {
+      stockDirection: 'advance',
+      stockBps: 700,
+      benchmarkDirection: 'advance',
+      benchmarkBps: 400,
+      expected: 'outlier',
+    },
+    // stock +4%, benchmark +7%: same direction, under 1.5x -> market-wide
+    {
+      stockDirection: 'advance',
+      stockBps: 400,
+      benchmarkDirection: 'advance',
+      benchmarkBps: 700,
+      expected: 'market-wide',
+    },
+    // stock -7%, benchmark +7%: opposite directions -> stock-specific, regardless of equal magnitude
+    {
+      stockDirection: 'decline',
+      stockBps: 700,
+      benchmarkDirection: 'advance',
+      benchmarkBps: 700,
+      expected: 'stock-specific',
+    },
+    // stock +7%, benchmark -7%: opposite directions -> stock-specific
+    {
+      stockDirection: 'advance',
+      stockBps: 700,
+      benchmarkDirection: 'decline',
+      benchmarkBps: 700,
+      expected: 'stock-specific',
+    },
+  ];
+
+  it.each(cases)(
+    'stock $stockDirection $stockBps vs benchmark $benchmarkDirection $benchmarkBps -> $expected',
+    ({ stockDirection, stockBps, benchmarkDirection, benchmarkBps, expected }) => {
+      const move = event({ occurredAt: T0, direction: stockDirection, magnitudeBps: stockBps });
+      const benchmark = event({
+        instrumentId: INDEX,
+        occurredAt: T0 - 1,
+        direction: benchmarkDirection,
+        magnitudeBps: benchmarkBps,
+      });
+      expect(classifySignal(move, [benchmark])).toBe(expected);
+    },
+  );
+});
+
+describe('degenerate benchmark magnitudes do not produce NaN, Infinity, or a crash', () => {
+  it('handles a benchmark event with zero magnitude without dividing by anything', () => {
+    // classifySignal never divides -- it multiplies the benchmark's magnitude
+    // by OUTLIER_FACTOR and compares -- so there is no operation here that can
+    // produce NaN or Infinity even in a degenerate case the real engine would
+    // never emit (magnitudeBps is always >= the threshold in practice).
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 600 });
+    const benchmark = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - 1,
+      direction: 'decline',
+      magnitudeBps: 0,
+    });
+    const result = classifySignal(move, [benchmark]);
+    expect(['market-wide', 'outlier', 'stock-specific']).toContain(result);
+    expect(result).toBe('outlier'); // any real move exceeds a benchmark of zero
+  });
+
+  it('handles a tiny (1 bps) benchmark and a tiny stock move the same way', () => {
+    const move = event({ occurredAt: T0, direction: 'advance', magnitudeBps: 1 });
+    const benchmark = event({
+      instrumentId: INDEX,
+      occurredAt: T0 - 1,
+      direction: 'advance',
+      magnitudeBps: 1,
+    });
+    expect(classifySignal(move, [benchmark])).toBe('market-wide');
+  });
+});
+
+describe('a benchmark with gaps, or one that starts after the stock event', () => {
+  it('falls back to stock-specific when the benchmark only starts after this event', () => {
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 700 });
+    const startsLate = event({
+      instrumentId: INDEX,
+      occurredAt: T0 + HOUR,
+      direction: 'decline',
+      magnitudeBps: 700,
+    });
+    expect(classifySignal(move, [startsLate])).toBe('stock-specific');
+  });
+
+  it('uses the most recent benchmark event before a gap, not one from further back', () => {
+    const move = event({ occurredAt: T0 + 5 * HOUR, direction: 'decline', magnitudeBps: 700 });
+    const early = event({
+      instrumentId: INDEX,
+      occurredAt: T0,
+      direction: 'advance',
+      magnitudeBps: 900,
+    });
+    // A gap in the benchmark's own history -- e.g. a quiet period -- between
+    // `early` and the event just before `move`.
+    const beforeGap = event({
+      instrumentId: INDEX,
+      occurredAt: T0 + 4 * HOUR,
+      direction: 'decline',
+      magnitudeBps: 650,
+    });
+    expect(classifySignal(move, [early, beforeGap])).toBe('market-wide');
+  });
+});
+
+describe('a tie in benchmark timestamps is resolved deterministically', () => {
+  it('gives the same verdict regardless of the order two simultaneous benchmark events are passed in', () => {
+    const move = event({ occurredAt: T0, direction: 'decline', magnitudeBps: 700 });
+    const a = event({
+      instrumentId: INDEX,
+      occurredAt: T0,
+      direction: 'decline',
+      magnitudeBps: 650,
+    });
+    const b = event({
+      instrumentId: INDEX,
+      occurredAt: T0,
+      direction: 'decline',
+      magnitudeBps: 680,
+    });
+    expect(classifySignal(move, [a, b])).toBe(classifySignal(move, [b, a]));
   });
 });

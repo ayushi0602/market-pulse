@@ -132,10 +132,18 @@ export function createAttentionRoutes({ events, watermarks }: AttentionRoutesDep
       return;
     }
 
+    // Clamped to the real head, not trusted as given (F6). Nothing in the wire
+    // format stops a client -- buggy or otherwise -- from sending a number far
+    // beyond what has actually been recorded. Storing it unclamped would mark
+    // every future event up to that number as already read the instant it is
+    // appended, which is a silent, much larger version of the exact bug F1
+    // exists to prevent: events becoming unreadable without ever being shown.
+    const boundedThrough = Math.min(throughSequence, events.head());
+
     // The store clamps to MAX(existing, incoming) in SQL, so a stale
     // acknowledgement is a no-op rather than an error (F3). Returning the stored
     // value means the client always learns where it actually ended up.
-    const stored = watermarks.advanceTo(userId(rawUser), throughSequence);
+    const stored = watermarks.advanceTo(userId(rawUser), boundedThrough);
     const response: AcknowledgeResponse = {
       userId: stored.userId,
       lastSeenSequence: stored.lastSeenSequence,
