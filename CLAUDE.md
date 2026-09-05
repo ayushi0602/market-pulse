@@ -366,6 +366,58 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
 
+### 2026-09-05 — Phase 10b: site chrome
+
+The user's response to Phase 10: "there is nothing like the Groww website."
+Correct, and worth being precise about why. Phase 10 reskinned the dashboard's
+colours, radius and one component (the pill) with Groww's real tokens -- but
+`groww.in` is a marketing *website*: a persistent header with a logo, product
+nav, and an account control. This app went straight to the watchlist with no
+header at all, by an earlier, deliberate decision. Colour alone cannot make a
+page read as a site when the page has no site-level chrome.
+
+Asked before building, since "make it look like the website" had at least two
+readings with materially different scope: a header/nav bar above the existing
+dashboard, or a marketing landing page in front of it (hero, feature grid,
+"Get started" CTA) with the dashboard behind a click-through. The user chose
+the header. The landing-page reading would have added real scope beyond the
+brief -- the watchlist is the entry point per §1, and marketing copy for a
+product this is not is not something to invent.
+
+**`Header.tsx`**: a wordmark where a logo goes, the three tabs promoted out of
+the page body into permanent nav, and an account chip (avatar + the existing
+"Viewing as" input) on the right. `tab` and `user` still live in `App` --
+nothing here is a new source of truth, only a new place things are rendered
+and clicked. The old `.tabs` CSS was reused rather than duplicated: it lived on
+the page body before, it lives in the header now, and it needed its
+border-bottom removed (the header owns that line now) rather than a parallel
+`.header-nav` class next to it.
+
+Removing the "Viewing as" control from the attention tab's `.actions` row and
+promoting it to the header was a small correctness fix in passing: `user` was
+already global state read by both `Watchlist` and the feed, so having its only
+editor live inside one tab's conditional content was accidental, not intended
+-- switching the reader should not require being on a specific screen.
+
+**A real regression caught before committing.** The first version put the
+brand mark, nav and account chip in one row at every width. At 390px that left
+"While you were away" clipped to "While you w" -- the nav had almost no width
+left once the logo and chip took their share, worse than the old below-header
+tab strip that had the full viewport to itself. Fixed with a two-row header
+under 480px: brand and chip share a compact top line, tabs get their own full
+line beneath it, which is what let all three fit without scrolling in the
+first place. Found by screenshot, not by a test -- `overflow=false` was true
+in both versions, because clipping a label mid-word is not horizontal
+overflow.
+
+No test needed to change: the tabs kept their `role="tab"` / `aria-selected`
+attributes regardless of container, and `getByLabelText('User id')` still
+resolves from inside the account chip's `<label>`.
+
+Gate: `npm run verify` green -- 218 tests, 21 files, no change in count. No
+overflow at 390, 768 or 900px, including the two-row header case, checked over
+CDP.
+
 ### 2026-09-05 — Phase 10: a Groww-derived visual theme
 
 Requested explicitly: "design UI/UX like the Groww official theme." Two things

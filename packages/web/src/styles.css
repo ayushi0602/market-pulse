@@ -102,16 +102,165 @@ body {
 .shell {
   max-width: 720px;
   margin: 0 auto;
-  padding: 3rem 1.25rem 5rem;
+  padding: 2rem 1.25rem 5rem;
 }
 
-.eyebrow {
+/*
+ * ---------- site chrome ----------
+ *
+ * The bar every real product has and this one didn't: a wordmark where a logo
+ * goes, permanent navigation instead of tabs buried in the page body, and an
+ * account chip naming who is looking. Full-bleed, with an inner rail matching
+ * `.shell`'s width so its contents line up with the page beneath it.
+ */
+.app-header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-soft);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-header-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 1.25rem;
+  height: 3.75rem;
+  display: flex;
+  align-items: center;
+  gap: 1.75rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+}
+
+.brand-mark {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  flex: 0 0 auto;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+  white-space: nowrap;
+}
+
+/* Takes the remaining row width so the account chip sits flush right. */
+.app-header-inner .tabs {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.account-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  padding: 0.3125rem 0.75rem 0.3125rem 0.3125rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-soft);
+  cursor: text;
+}
+
+.account-avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: var(--advance-soft);
+  color: var(--advance);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex: 0 0 auto;
+}
+
+.account-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.account-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+.account-chip input[type='text'] {
+  border: 0;
+  padding: 0;
+  min-width: 4.5rem;
+  width: 5rem;
   font-size: 0.8125rem;
   font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin: 0 0 0.5rem;
+  background: transparent;
+}
+
+.account-chip input[type='text']:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 480px) {
+  /*
+   * Two rows, not one squeezed row. Brand, chip and three tab labels sharing a
+   * single 3.75rem-tall line left "While you were away" clipped mid-word --
+   * the nav had almost no width left after the logo and account chip took
+   * their share. Splitting brand+chip onto their own row gives the tabs back
+   * the full width they had before the header existed, which is what let all
+   * three fit without scrolling at this width in the first place.
+   */
+  .app-header-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0.625rem 1rem 0;
+    row-gap: 0.5rem;
+  }
+
+  .brand {
+    order: 1;
+    flex: 1 1 auto;
+  }
+
+  .account-chip {
+    order: 2;
+    padding: 0.25rem;
+  }
+
+  .app-header-inner .tabs {
+    order: 3;
+    flex: 1 1 100%;
+    height: auto;
+    padding: 0.375rem 0 0.625rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .tabs button {
+    height: auto;
+    padding-bottom: 0.375rem;
+  }
+
+  .account-label {
+    display: none;
+  }
+
+  .account-chip input[type='text'] {
+    width: 4rem;
+    min-width: 0;
+  }
 }
 
 h1 {
@@ -395,11 +544,17 @@ button.link:focus-visible {
   padding: 0;
 }
 
+/*
+ * Lives inside the header bar now, not above the page body -- so it no longer
+ * draws its own separator (the header's own border-bottom does that job) and
+ * the active underline sits at the bar's own bottom edge rather than -1px
+ * against a border it no longer owns.
+ */
 .tabs {
   display: flex;
-  gap: 1.5rem;
-  border-bottom: 1px solid var(--border-soft);
-  margin-bottom: 1.75rem;
+  align-items: center;
+  gap: 1.75rem;
+  height: 100%;
   /* Scroll rather than wrap: a wrapped tab label reads as a broken heading. */
   overflow-x: auto;
   scrollbar-width: none;
@@ -416,15 +571,17 @@ button.link:focus-visible {
   background: none;
   color: var(--muted);
   font: inherit;
-  font-weight: 600;
-  padding: 0 0 0.75rem;
-  margin-bottom: -1px;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  height: 100%;
+  padding: 0;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .tabs button[aria-selected='true'] {
   color: var(--text-strong);
+  font-weight: 600;
   border-bottom-color: var(--accent);
 }
 

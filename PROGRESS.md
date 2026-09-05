@@ -924,3 +924,30 @@ matched a now-split text node was rewritten against the existing
 
 Gate: `npm run verify` green — 218 tests, 21 files, unchanged in count. No
 overflow at 390 / 768 / 900px, verified live over CDP after the change.
+
+---
+
+## Iteration 10b — site chrome
+
+Response to "there is nothing like the Groww website": correct, and the reason
+was structural, not colour. `groww.in` is a marketing site with a persistent
+header (logo, nav, account); this app went straight to the watchlist with no
+header at all. Asked which reading of "look like the website" was wanted — a
+header/nav bar, or a marketing landing page in front of the dashboard — since
+those are very different amounts of scope. The user chose the header.
+
+- **Added** `Header.tsx`: wordmark, the three tabs promoted from the page body
+  into permanent nav, and an account chip carrying the existing "Viewing as"
+  control. `tab` and `user` remain owned by `App`; nothing new was introduced
+  as state.
+- **Fixed in passing**: the user switcher was buried inside one tab's action
+  row despite `user` being state the whole app reads. Promoting it to the
+  header makes switching readers possible from every screen, which is what the
+  state's scope already implied.
+- **A regression caught by screenshot, not a test**: a single-row header at
+  390px clipped "While you were away" to "While you w" — three items sharing a
+  row with no width to spare. Fixed with a two-row header under 480px, giving
+  the tabs their own full-width line back.
+
+Gate: `npm run verify` green — 218 tests, 21 files, unchanged in count. No
+overflow at 390 / 768 / 900px, including the two-row header, verified over CDP.

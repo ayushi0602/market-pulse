@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import type { AttentionFeedResponse } from '@market-pulse/domain';
 import { acknowledge, fetchFeed } from './api.js';
 import { AttentionFeed, TraditionalWatchlist } from './AttentionFeed.jsx';
+import { Header } from './Header.jsx';
 import { MarketStatus } from './MarketStatus.jsx';
 import { ReplayView } from './Replay.jsx';
 import { Watchlist } from './Watchlist.jsx';
@@ -74,159 +75,127 @@ export function App() {
   };
 
   return (
-    <main className="shell">
-      <p className="eyebrow">Market Pulse</p>
-      <MarketStatus />
+    <>
+      <Header tab={tab} onTabChange={setTab} user={user} onUserChange={setUser} />
+      <main className="shell">
+        <MarketStatus />
 
-      <div className="tabs" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'watchlist'}
-          onClick={() => setTab('watchlist')}
-        >
-          My watchlist
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'attention'}
-          onClick={() => setTab('attention')}
-        >
-          While you were away
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'replay'}
-          onClick={() => setTab('replay')}
-        >
-          Replay
-        </button>
-      </div>
+        {tab === 'watchlist' && (
+          <>
+            <h1>My watchlist</h1>
+            <Watchlist userId={user} onViewChanges={() => setTab('attention')} />
+          </>
+        )}
 
-      {tab === 'watchlist' && (
-        <>
-          <h1>My watchlist</h1>
-          <Watchlist userId={user} onViewChanges={() => setTab('attention')} />
-        </>
-      )}
-
-      {tab === 'replay' && (
-        <>
-          <h1>What actually happened</h1>
-          <p className="subtitle">
-            The same history, stepped through in the order it was recorded. Watching it changes
-            nothing — not the events, and not your read position.
-          </p>
-          <ReplayView />
-        </>
-      )}
-
-      {tab === 'attention' && feed === undefined && error === undefined && (
-        <p className="muted">Checking what you missed…</p>
-      )}
-
-      {tab === 'attention' && feed === undefined && error !== undefined && (
-        <>
-          <h1>Something went wrong</h1>
-          <p className="subtitle">{error}</p>
-          <p className="muted">
-            Is the API running? Try <code>npm run dev</code>, then <code>npm run db:seed</code>.
-          </p>
-        </>
-      )}
-
-      {tab === 'attention' && feed !== undefined && (
-        <>
-          <h1>
-            {feed.summary.meaningfulChanges === 0 ? 'You are all caught up' : 'While you were away'}
-          </h1>
-          <p className="subtitle">
-            {feed.summary.meaningfulChanges === 0
-              ? 'Nothing has crossed the significance threshold since you last checked.'
-              : `${pluralise(feed.summary.meaningfulChanges, 'meaningful change')} across ${pluralise(
-                  feed.summary.instruments.length,
-                  'instrument',
-                )}.`}
-          </p>
-
-          {arrived > 0 && (
-            <p className="arrived" role="status">
-              {pluralise(arrived, 'change')} arrived while this page was open. The market kept
-              moving; your read position did not.
+        {tab === 'replay' && (
+          <>
+            <h1>What actually happened</h1>
+            <p className="subtitle">
+              The same history, stepped through in the order it was recorded. Watching it changes
+              nothing — not the events, and not your read position.
             </p>
-          )}
+            <ReplayView />
+          </>
+        )}
 
-          {feed.events.length > 0 && (
-            <>
-              <div className="toggle" role="group" aria-label="Comparison">
-                <button
-                  type="button"
-                  aria-pressed={view === 'traditional'}
-                  onClick={() => setView('traditional')}
-                >
-                  Traditional watchlist
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={view === 'pulse'}
-                  onClick={() => setView('pulse')}
-                >
-                  Market Pulse
-                </button>
-              </div>
+        {tab === 'attention' && feed === undefined && error === undefined && (
+          <p className="muted">Checking what you missed…</p>
+        )}
 
-              {view === 'pulse' ? (
-                <AttentionFeed feed={feed} />
-              ) : (
-                <TraditionalWatchlist feed={feed} />
-              )}
-            </>
-          )}
-
-          {feed.events.length === 0 && (
-            <div className="card empty">
-              <div className="tick" aria-hidden="true">
-                ✓
-              </div>
-              <p>
-                Read position {feed.sinceSequence} of {feed.throughSequence}.
-              </p>
-              <p className="muted">
-                Try another user below — the log is shared, but each person&rsquo;s position in it
-                is their own. <code>priya</code> was seeded partway through it.
-              </p>
-            </div>
-          )}
-
-          <div className="actions">
-            <button
-              type="button"
-              className="primary"
-              onClick={onAcknowledge}
-              disabled={acknowledging || feed.events.length === 0}
-            >
-              {acknowledging ? 'Marking…' : 'Mark all as read'}
-            </button>
-            <label className="muted">
-              Viewing as{' '}
-              <input
-                type="text"
-                value={user}
-                onChange={(e) => setUser(e.target.value.trim() || 'demo')}
-                aria-label="User id"
-              />
-            </label>
-          </div>
-
-          {actionError !== undefined && (
+        {tab === 'attention' && feed === undefined && error !== undefined && (
+          <>
+            <h1>Something went wrong</h1>
+            <p className="subtitle">{error}</p>
             <p className="muted">
-              Nothing was marked as read — {actionError}. Your position is unchanged.
+              Is the API running? Try <code>npm run dev</code>, then <code>npm run db:seed</code>.
             </p>
-          )}
-        </>
-      )}
-    </main>
+          </>
+        )}
+
+        {tab === 'attention' && feed !== undefined && (
+          <>
+            <h1>
+              {feed.summary.meaningfulChanges === 0
+                ? 'You are all caught up'
+                : 'While you were away'}
+            </h1>
+            <p className="subtitle">
+              {feed.summary.meaningfulChanges === 0
+                ? 'Nothing has crossed the significance threshold since you last checked.'
+                : `${pluralise(feed.summary.meaningfulChanges, 'meaningful change')} across ${pluralise(
+                    feed.summary.instruments.length,
+                    'instrument',
+                  )}.`}
+            </p>
+
+            {arrived > 0 && (
+              <p className="arrived" role="status">
+                {pluralise(arrived, 'change')} arrived while this page was open. The market kept
+                moving; your read position did not.
+              </p>
+            )}
+
+            {feed.events.length > 0 && (
+              <>
+                <div className="toggle" role="group" aria-label="Comparison">
+                  <button
+                    type="button"
+                    aria-pressed={view === 'traditional'}
+                    onClick={() => setView('traditional')}
+                  >
+                    Traditional watchlist
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={view === 'pulse'}
+                    onClick={() => setView('pulse')}
+                  >
+                    Market Pulse
+                  </button>
+                </div>
+
+                {view === 'pulse' ? (
+                  <AttentionFeed feed={feed} />
+                ) : (
+                  <TraditionalWatchlist feed={feed} />
+                )}
+              </>
+            )}
+
+            {feed.events.length === 0 && (
+              <div className="card empty">
+                <div className="tick" aria-hidden="true">
+                  ✓
+                </div>
+                <p>
+                  Read position {feed.sinceSequence} of {feed.throughSequence}.
+                </p>
+                <p className="muted">
+                  Try another user in the header above — the log is shared, but each person&rsquo;s
+                  position in it is their own. <code>priya</code> was seeded partway through it.
+                </p>
+              </div>
+            )}
+
+            <div className="actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={onAcknowledge}
+                disabled={acknowledging || feed.events.length === 0}
+              >
+                {acknowledging ? 'Marking…' : 'Mark all as read'}
+              </button>
+            </div>
+
+            {actionError !== undefined && (
+              <p className="muted">
+                Nothing was marked as read — {actionError}. Your position is unchanged.
+              </p>
+            )}
+          </>
+        )}
+      </main>
+    </>
   );
 }
