@@ -148,7 +148,7 @@ ARCHITECTURE.md records how each one holds:
 | **F6** | Acknowledging cannot advance past events that exist — a `throughSequence` beyond the log head is **refused**, leaving the watermark untouched |
 | **R1–R5** | Replay: it reads history and cannot rewrite it, is deterministic, follows sequence order, and acknowledges nothing |
 | **W1–W5** | The watchlist: membership is independent of events, attention is derived not stored, removal preserves history, changes survive restart |
-| **W6** | The benchmark cannot be added to a watchlist — refused at the route, before anything is written |
+| **W6** | The benchmark cannot be added to a watchlist — refused at the route, before anything is written, case-insensitively |
 | **SC1** | Signal context: a benchmark event after the one being classified cannot affect its verdict — enforced inside `classifySignal` itself, not by a caller convention |
 
 The simulator has its own block in `packages/server/test/simulation.test.ts`. It
@@ -368,6 +368,34 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
+
+### 2026-09-05 — Phase 12c: W6 made case-insensitive
+
+A correction to my own call in 12b, on the user's reaffirmation.
+
+12b left the benchmark guard case-**sensitive**, reasoning that nothing else in
+the system folds case, that `nifty` is a genuinely different and inert
+instrument, and that folding case in one place would be the system's only
+normalization rule. That reasoning is still true as far as it goes. It was also
+the wrong trade: live, `POST /watchlist {"instrumentId":"nifty"}` returned 201
+and put a junk row on the list. **A boundary with a one-keystroke bypass is not
+a boundary**, whatever is technically true about which data it reaches.
+
+The guard now compares case-insensitively. The asymmetry with storage is
+deliberate and tested from both sides: folding case in the *guard* only widens
+what the boundary refuses (safe), while folding case in *storage* would be a
+system-wide decision with real consequences (two spellings silently becoming
+one row). A test asserts an ordinary lowercase symbol is still stored exactly
+as given, and a mutation that uppercases on the way into the store fails it.
+
+The general lesson, worth keeping: when a rule exists specifically to be
+unbypassable, "the bypass doesn't reach anything important" is the wrong
+question. The right one is whether the rule can be trivially sidestepped at
+all.
+
+Gate: 266 tests, 22 files. Four mutations on this guard, all caught: reverting
+to case-sensitive, removing the guard, dropping the trim, and over-folding into
+storage.
 
 ### 2026-09-05 — Phase 12b: two-invariant patch (W6, and F6 corrected)
 

@@ -1078,3 +1078,26 @@ Five mutations run, all caught: NIFTY guard removed, raw-string comparison
 `>` (which breaks every ordinary ack).
 
 Gate: `npm run verify` green — **261 tests, 22 files**.
+
+---
+
+## Iteration 12c — W6 made case-insensitive
+
+A correction to my own 12b decision, on the user's reaffirmation.
+
+12b left the benchmark guard case-sensitive, on the reasoning that nothing else
+in the system folds case and that `nifty` is a different, inert instrument
+anyway. Live, that meant `POST /watchlist {"instrumentId":"nifty"}` returned
+201 and added a junk row — a rule that exists to be unbypassable, bypassed by
+one keystroke.
+
+The guard now folds case. The asymmetry with storage is deliberate and tested
+both ways: folding in the guard only widens what the boundary refuses, while
+folding in storage would silently merge two spellings into one row. A test
+asserts ordinary symbols are still stored exactly as given.
+
+Gate: `npm run verify` green — **266 tests, 22 files**. Four mutations on the
+guard, all caught. Live E2E: `NIFTY`, `nifty`, `Nifty`, `NiFtY` and
+`"  nifty  "` all refused with an empty watchlist; `INFY` still added;
+RELIANCE still classified `market-wide`/`outlier` against NIFTY as benchmark
+context; F6 still refuses an out-of-range ack.

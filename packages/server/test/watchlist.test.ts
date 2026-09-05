@@ -327,25 +327,31 @@ describe('W6: the benchmark is not something a watchlist can follow', () => {
     expect(after.rows.some((r) => r.instrumentId === 'INFY')).toBe(true);
   });
 
-  it('treats a differently-cased symbol as a different instrument, not the benchmark', async () => {
-    // Nothing in this system folds case -- `instrumentId()` only trims, and
-    // the event, snapshot and watchlist stores all key by the exact string.
-    // So "nifty" is a genuinely different instrument here, with none of the
-    // real benchmark's data behind it. It is accepted, and it is inert: never
-    // observed, no events, no way to reach NIFTY's history through it. Making
-    // the check case-insensitive would be the only case-folding in the
-    // system, which would be a new normalization rule rather than enforcing
-    // this one.
+  it.each(['NIFTY', 'nifty', 'Nifty', 'NiFtY', '  nifty  '])(
+    'refuses %s, so case is not a one-keystroke bypass of the boundary',
+    async (symbol) => {
+      const before = createWatchlistStore(db, clock).list(userId('alice'));
+
+      await request(app)
+        .post('/api/watchlist')
+        .send({ userId: 'alice', instrumentId: symbol })
+        .expect(400);
+
+      const after = createWatchlistStore(db, clock).list(userId('alice'));
+      expect(after.map((e) => e.instrumentId)).toEqual(before.map((e) => e.instrumentId));
+    },
+  );
+
+  it('does not fold case for ordinary instruments, which are stored as given', async () => {
+    // The guard folds case; storage does not. Only the boundary widened --
+    // an ordinary symbol is still keyed by the exact string it arrived as.
     await request(app)
       .post('/api/watchlist')
-      .send({ userId: 'alice', instrumentId: 'nifty' })
+      .send({ userId: 'alice', instrumentId: 'wipro' })
       .expect(201);
 
-    const after = await watchlistFor('alice');
-    const row = after.rows.find((r) => r.instrumentId === 'nifty');
-    expect(row).toBeDefined();
-    expect(row?.latestPrice).toBeUndefined();
-    expect(row?.meaningfulChanges).toBe(0);
-    expect(row?.attention).toBe('quiet');
+    const stored = createWatchlistStore(db, clock).list(userId('alice'));
+    expect(stored.some((e) => e.instrumentId === 'wipro')).toBe(true);
+    expect(stored.some((e) => e.instrumentId === 'WIPRO')).toBe(false);
   });
 });

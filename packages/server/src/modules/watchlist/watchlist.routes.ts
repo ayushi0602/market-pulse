@@ -82,17 +82,25 @@ export function createWatchlistRoutes({
       return;
     }
 
-    // Same normalization the store would apply (trim), checked before anything
-    // is written -- not after, and not left to the UI. The benchmark is market
-    // context computed *from* the shared event log, not something a watchlist
-    // entry can point at: it is tracked and simulated like any instrument
-    // (`catalogue.ts`), but it is nobody's to follow. Case is deliberately not
-    // folded here, because nothing else in the system folds it either --
-    // `instrumentId()` only trims, and the event, snapshot and watchlist
-    // stores all key by the exact string. A symbol like "nifty" is therefore a
-    // genuinely different, harmless, dataless instrument to this system, not a
-    // way to reach the real benchmark's history under a different case.
-    if (instrumentId(instrument) === instrumentId(BENCHMARK_SYMBOL)) {
+    /*
+     * The benchmark is market context computed *from* the shared event log,
+     * not something a watchlist entry may point at. Checked here, before
+     * anything is written, so a direct API caller cannot reach past the UI --
+     * the UI's own uppercasing is a convenience, never the enforcement.
+     *
+     * This one comparison folds case, and it is the only thing in the system
+     * that does: `instrumentId()` merely trims, and the event, snapshot and
+     * watchlist stores all key by the exact string. That asymmetry is
+     * deliberate rather than an oversight. Case-folding *storage* would be a
+     * system-wide normalization decision with real consequences (two spellings
+     * of a symbol silently becoming one row); case-folding this *guard* only
+     * widens what the boundary refuses, which is the safe direction. Left
+     * case-sensitive, `nifty` sailed past a rule that exists precisely to be
+     * unbypassable, and a boundary with a one-keystroke bypass is not a
+     * boundary.
+     */
+    const normalized = instrumentId(instrument);
+    if (normalized.toUpperCase() === BENCHMARK_SYMBOL.toUpperCase()) {
       res.status(400).json({
         error: `${BENCHMARK_SYMBOL} is a market benchmark, not something a watchlist can follow`,
       });
