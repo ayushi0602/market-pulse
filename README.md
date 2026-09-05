@@ -131,8 +131,10 @@ attention (9)** and **Quiet (3)**. Watch a price flash as it changes. Note
 **TCS** in the quiet group: a recorded price, and *"No meaningful changes"*. It
 is quiet, and it is still here.
 
-**2 — Note RELIANCE:** *"2 meaningful changes — but the price came back."* Click
-**View what happened →**.
+**2 — Note RELIANCE:** *"2 meaningful changes — net 0.00% overall."* Two things
+happened and they cancelled out, which is not the same as nothing happening —
+and note that the price on the right is the *latest observation*, a different
+moment from the events that line describes. Click **View what happened →**.
 
 **3 — *While you were away*** groups what crossed the threshold by instrument.
 Instruments are ordered by their largest move — INFY's genuine 20% fall leads at
@@ -151,13 +153,23 @@ events that are simply specific to the stock and get no tag at all.
 **4 — Toggle to *Traditional watchlist*.** Same data, same moment:
 
 ```
-RELIANCE   ₹2,900.00   0.00%   No change since your last check
+RELIANCE   ₹2,900.00   0.00%   No change across what you missed
+                               now ₹2,893.78 as recorded 8:59 pm
 ```
+
+Two prices, deliberately. The first is where the events you missed ended; the
+second is the latest observation, because the market kept moving after the last
+threshold crossing. Both are true, and saying only one of them is how the two
+screens quietly came to disagree.
 
 Toggle back. **The price went nowhere. The story did not.**
 
-**5 — Open *Replay*.** Pick a story from the dropdown — it lists only
-instruments that have one, ordered by their biggest move. Step through RELIANCE.
+**5 — Open *Replay*.** It opens on whichever instrument has the most recorded
+crossings — ADANIENT at seed time, with five — rather than the largest single
+move, because one big event makes a poor thing to step through. The dropdown
+lists every instrument that has a story, biggest move first, with the index
+marked *(market benchmark)* because it is context rather than something to
+follow. **Select RELIANCE**, which is the one that makes the argument.
 The shape fills in as you go and the snapshot number moves — 0.00%, then −9.00%,
 then back to 0.00% — while the revealed events stay on screen. Watching changes
 nothing: not the events, and not your read position.
