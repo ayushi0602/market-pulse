@@ -196,20 +196,17 @@ export function TraditionalWatchlist({ feed }: { feed: AttentionFeedResponse }) 
               </div>
               <div className="row-end">
                 <div className="big-number">{formatPrice(instrument.latestPrice)}</div>
-                <div
-                  style={{
-                    fontSize: '0.9375rem',
-                    fontWeight: 600,
-                    color: isFlat
-                      ? undefined
+                <span
+                  className={`pill ${
+                    isFlat
+                      ? 'pill-flat'
                       : instrument.netChangeBps < 0
-                        ? 'var(--decline)'
-                        : 'var(--advance)',
-                  }}
-                  className={isFlat ? 'flat' : undefined}
+                        ? 'pill-negative'
+                        : 'pill-positive'
+                  }`}
                 >
                   {formatPercent(instrument.netChangeBps)}
-                </div>
+                </span>
               </div>
             </div>
           );

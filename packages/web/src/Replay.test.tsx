@@ -72,7 +72,11 @@ describe('stepping through the story', () => {
   it('starts before anything has happened', async () => {
     await renderReplay();
     expect(screen.getByText('Before you left')).toBeDefined();
-    expect(screen.getByText(/0\.00% vs ₹2,900\.00/)).toBeDefined();
+    // The percentage and the "vs opening" context are two elements now (a
+    // pill plus a caption), so the combined sentence is asserted via the
+    // wrapper's text content rather than a single text node.
+    expect(screen.getByTestId('replay-net').textContent).toContain('0.00%');
+    expect(screen.getByTestId('replay-net').textContent).toContain('vs ₹2,900.00');
     expect(screen.queryByText(/Fell 9\.00%/)).toBeNull();
   });
 

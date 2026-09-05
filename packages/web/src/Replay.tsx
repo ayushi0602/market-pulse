@@ -216,15 +216,13 @@ export function ReplayView({ instrumentId: initial, stepIntervalMs = 1400 }: Rep
           </div>
           <div className="row-end">
             <div className="big-number">{current === undefined ? '—' : formatPrice(current)}</div>
-            <div
-              className="muted"
-              style={{
-                fontWeight: 600,
-                color: net === 0 ? undefined : net < 0 ? 'var(--decline)' : 'var(--advance)',
-              }}
-              data-testid="replay-net"
-            >
-              {formatPercent(net)} vs {opening === undefined ? '—' : formatPrice(opening)}
+            <div data-testid="replay-net">
+              <span
+                className={`pill ${net === 0 ? 'pill-flat' : net < 0 ? 'pill-negative' : 'pill-positive'}`}
+              >
+                {formatPercent(net)}
+              </span>{' '}
+              <span className="muted">vs {opening === undefined ? '—' : formatPrice(opening)}</span>
             </div>
           </div>
         </div>

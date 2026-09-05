@@ -897,3 +897,30 @@ in `src` or `test`; no unused CSS classes; every new module exported and wired;
 poll intervals in the code match the ones the README quotes (2s / 4s / 8s);
 `data/` and `.env` are git-ignored.
 
+
+---
+
+## Iteration 10 — a Groww-derived visual theme
+
+Requested directly: match Groww's UI/UX. Tokens were pulled from Groww's live
+production CSS bundles (fetched and grepped directly, not recalled), applied to
+Market Pulse's own screens with no Groww branding anywhere.
+
+- **Color, radius, shadow, weight**: brand green `#04b488`, warm red-orange
+  negative `#ed5533`, slate text `#44475b` (not black), gray50/100/200
+  neutrals, 8/12/16/999px radius scale, `0 4px 12px rgb(0 0 0 / 8%)` shadow.
+  Dark theme uses Groww's own dark tokens directly.
+- **Typography**: Inter, the honest open substitute for the licensed
+  GrowwSans/Soehne pair, loaded with Groww's own fallback chain behind it.
+- **New component**: `.pill` — a tinted, rounded badge for a signed percentage,
+  replacing two inline `style={{ color }}` blocks that computed the same
+  three-way branch. This is Groww's actual reading pattern for a price change.
+- **One bug found by looking**: Inter's wider metrics clipped the "Add a
+  symbol" placeholder against a fixed-width input. Fixed with `min-width`.
+
+No markup structure changed beyond the two pill sites; one test regex that
+matched a now-split text node was rewritten against the existing
+`data-testid="replay-net"` wrapper's `textContent`.
+
+Gate: `npm run verify` green — 218 tests, 21 files, unchanged in count. No
+overflow at 390 / 768 / 900px, verified live over CDP after the change.

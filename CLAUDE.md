@@ -366,6 +366,67 @@ tab strip scrolls rather than wrapping. If you change `.row`, `.tabs` or
 Newest first. One entry per iteration: what changed, and what a future agent
 needs to know that the diff does not say.
 
+### 2026-09-05 — Phase 10: a Groww-derived visual theme
+
+Requested explicitly: "design UI/UX like the Groww official theme." Two things
+had to be true for this to be legitimate rather than a knock-off: the tokens had
+to be *real*, not guessed from memory, and the result had to stay Market Pulse
+-- no Groww name, logo, or claim of being Groww.
+
+**Tokens came from Groww's own production CSS, not a description of it.**
+`groww.in`'s HTML is a client-rendered shell; the actual design lives in two
+`_next/static/css` bundles, fetched directly and grepped for `--variable:
+#hex` declarations. That is where every number below comes from:
+
+| Token | Value | Groww's name for it |
+| --- | --- | --- |
+| Brand green | `#04b488` | `--green9` |
+| Green text (on tint) | `#04ad83` | `--positive-hover` |
+| Green tint | `#e9faf3` | `--green2` |
+| Negative | `#ed5533` | `--red9` -- a warm red-orange, not pure red |
+| Negative tint | `#fae9e5` | `--red100` |
+| Primary text | `#44475b` | `--gray900` -- a soft slate, not black |
+| Background | `#f8f8f8` | `--gray50` |
+| Card border | `#dddee1` / `#f0f0f2` | `--gray200` / `--gray100` |
+| Dark bg / text / border | `#060809` / `#f2f5f7` / `#2e2e2e` | their dark theme, direct |
+
+Radius scale (8/12/16px, 999px for pills), the `0 4px 12px rgb(0 0 0 / 8%)`
+shadow, and font-weight 500 as the workhorse weight are the same provenance.
+Typography is the one honest substitution: `GrowwSans`/`Soehne` are licensed
+faces this project cannot load, so **Inter** stands in -- same neutral,
+slightly-rounded grotesk character, loaded from Google Fonts with Groww's own
+fallback chain (`Noto Sans`, `system-ui`) behind it, so a machine with neither
+still lands in the right family of shape.
+
+**The chip is the one new component.** Groww's watchlist rows show a price
+change as a tinted, rounded pill -- colour carried by the fill *and* the text,
+not text colour alone. `.pill` / `.pill-positive` / `.pill-negative` /
+`.pill-flat` replaced two inline `style={{ color: ... }}` blocks (in
+`TraditionalWatchlist` and the replay net-change badge) that were computing the
+same three-way branch in JSX. No other markup changed: every existing class
+name and DOM structure survived, so the only test casualty was one regex that
+had matched "0.00% vs ₹2,900.00" as one text node -- splitting the percentage
+into its own pill made that two nodes, and the assertion was rewritten against
+`textContent` on the existing `data-testid="replay-net"` wrapper rather than
+against node structure.
+
+**One real bug, found by looking.** Inter runs a little wider per character
+than the previous system-font stack, and the "Add a symbol" input had a fixed
+`width: 8rem` -- just enough to clip the placeholder to "Add a symbo". Fixed
+with `min-width` plus a wider default rather than a number tied to that one
+string.
+
+**What stayed Market Pulse.** No Groww name, logotype, or copy was used
+anywhere. The circular direction icons, the segmented toggle, and the pill
+pattern are Groww's *visual grammar* applied to this product's own screens and
+its own words -- "Simulated market", "meaningful changes", "as recorded" all
+read exactly as before. Adopting a palette and a component pattern from a
+well-known app is ordinary design practice; presenting this as Groww, or
+copying its brand identity, would not have been, and wasn't done.
+
+Gate: `npm run verify` green -- 218 tests, 21 files, unchanged in count. No
+overflow at 390, 768 or 900px, checked over CDP after the change.
+
 ### 2026-09-04 — Phase 9: a market that keeps moving
 
 Requested explicitly, and it reverses a decision on the cut list. Live data was

@@ -1,33 +1,75 @@
+/*
+ * Visual language: same palette, type rhythm and chip pattern as Groww's
+ * production app, applied to Market Pulse's own screens. Every hex value below
+ * was pulled from Groww's live CSS bundles, not approximated -- see the
+ * iteration log in CLAUDE.md for how. Structure and class names are unchanged
+ * from the previous pass; only tokens, radius, shadow, weight and one new
+ * component (the pill) are new.
+ */
 :root {
-  --bg: #f7f8fa;
+  --bg: #f8f8f8; /* Groww gray50 */
   --surface: #ffffff;
-  --border: #e3e6eb;
-  --text: #14181f;
-  --muted: #667085;
-  --decline: #c0392b;
-  --decline-soft: #fdf0ee;
-  --advance: #1a7f4b;
-  --advance-soft: #edf7f1;
-  --accent: #1c3f94;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 1px 3px rgb(16 24 40 / 4%);
+  --surface-sunken: #f0f0f2; /* Groww gray100 */
+  --border: #dddee1; /* Groww gray200 */
+  --border-soft: #f0f0f2;
+  --text: #44475b; /* Groww gray900 -- a soft slate, not black */
+  --text-strong: #121212;
+  --muted: #767a8c;
+  --decline: #ed5533; /* Groww red9/red500 -- warm red-orange, not pure red */
+  --decline-soft: #fae9e5; /* Groww red100 */
+  --advance: #04ad83; /* Groww positive-hover -- a shade deeper than the fill, for text */
+  --advance-fill: #04b488; /* Groww green9 -- the brand green itself */
+  --advance-soft: #e9faf3; /* Groww green2 */
+  --accent: #04b488;
+  --accent-ink: #ffffff;
+  --shadow: 0 4px 12px rgb(0 0 0 / 8%);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 999px;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0e1117;
-    --surface: #161b23;
-    --border: #262d38;
-    --text: #e6e9ef;
-    --muted: #98a2b3;
+    --bg: #060809; /* Groww dark background-primary */
+    --surface: #151819; /* Groww dark background-secondary */
+    --surface-sunken: #1c2021;
+    --border: #2e2e2e; /* Groww dark border-primary */
+    --border-soft: #232627;
+    --text: #f2f5f7; /* Groww dark content-primary */
+    --text-strong: #ffffff;
+    --muted: #989ea0; /* Groww dark content-secondary */
     --decline: #f0725f;
     --decline-soft: #2a1a18;
-    --advance: #4ec98a;
-    --advance-soft: #14251c;
-    --accent: #8ab0ff;
+    --advance: #46d5a7;
+    --advance-fill: #04b488;
+    --advance-soft: #0f251d;
+    --accent: #46d5a7;
+    --accent-ink: #06110d;
     --shadow: none;
     color-scheme: dark;
   }
+}
+
+:root[data-theme='dark'] {
+  --bg: #060809;
+  --surface: #151819;
+  --surface-sunken: #1c2021;
+  --border: #2e2e2e;
+  --border-soft: #232627;
+  --text: #f2f5f7;
+  --text-strong: #ffffff;
+  --muted: #989ea0;
+  --decline: #f0725f;
+  --decline-soft: #2a1a18;
+  --advance: #46d5a7;
+  --advance-fill: #04b488;
+  --advance-soft: #0f251d;
+  --accent: #46d5a7;
+  --accent-ink: #06110d;
+  --shadow: none;
+  color-scheme: dark;
 }
 
 * {
@@ -38,12 +80,21 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
+  /*
+   * GrowwSans is a licensed, proprietary face -- not something this project can
+   * load. Inter is the honest open substitute: same neutral, slightly rounded
+   * grotesk character, same weight range. The fallback chain after it is
+   * Groww's own (NotoSans, system-ui), so a machine with neither installed
+   * still lands on the same family of shape.
+   */
   font-family:
-    ui-sans-serif,
+    'Inter',
     -apple-system,
     'Segoe UI',
     Roboto,
+    'Noto Sans',
     sans-serif;
+  font-weight: 400;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -65,9 +116,11 @@ body {
 
 h1 {
   font-size: 2rem;
+  font-weight: 600;
   line-height: 1.2;
   letter-spacing: -0.02em;
   margin: 0 0 0.375rem;
+  color: var(--text-strong);
 }
 
 .subtitle {
@@ -75,13 +128,19 @@ h1 {
   margin: 0 0 2rem;
 }
 
+/*
+ * Segmented control, not underline tabs, for a toggle: a rounded track with a
+ * solid pill for the active side. This is how Groww renders a two-way switch
+ * -- the track colour communicates "these are the only two options" more than
+ * an underline does.
+ */
 .toggle {
   display: inline-flex;
   gap: 0.25rem;
   padding: 0.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-pill);
   margin-bottom: 1.5rem;
 }
 
@@ -93,26 +152,20 @@ h1 {
   font: inherit;
   font-weight: 600;
   font-size: 0.875rem;
-  padding: 0.4375rem 0.875rem;
-  border-radius: 7px;
+  padding: 0.4375rem 1rem;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 
 .toggle button[aria-pressed='true'] {
   background: var(--accent);
-  color: #fff;
-}
-
-@media (prefers-color-scheme: dark) {
-  .toggle button[aria-pressed='true'] {
-    color: #0e1117;
-  }
+  color: var(--accent-ink);
 }
 
 .card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
   padding: 1.25rem;
   margin-bottom: 0.875rem;
@@ -125,12 +178,17 @@ h1 {
   align-items: start;
 }
 
+/* Circular icon chips for direction, in place of a rounded square -- Groww's
+   arrow/direction markers are always fully round. */
 .event .arrow {
-  font-size: 1.5rem;
-  line-height: 1.2;
-  text-align: center;
-  border-radius: 8px;
-  padding: 0.125rem 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+  border-radius: var(--radius-pill);
 }
 
 .event.decline .arrow {
@@ -145,12 +203,13 @@ h1 {
 
 .event .symbol {
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  color: var(--text-strong);
 }
 
 .event .headline {
   font-size: 1.25rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0.125rem 0;
 }
@@ -185,24 +244,59 @@ h1 {
 .row + .row {
   margin-top: 0.875rem;
   padding-top: 0.875rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
 }
 
 .big-number {
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
+  color: var(--text-strong);
 }
 
 .flat {
   color: var(--muted);
 }
 
+/*
+ * The pill: a tinted, rounded badge for a signed number. This is Groww's
+ * signature reading pattern for a price change -- colour carried by a soft
+ * fill *and* the text inside it, rather than by text colour alone, so the
+ * direction reads at a glance even before the number is parsed.
+ */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1875rem 0.5rem;
+  border-radius: var(--radius-pill);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.pill-positive {
+  color: var(--advance);
+  background: var(--advance-soft);
+}
+
+.pill-negative {
+  color: var(--decline);
+  background: var(--decline-soft);
+}
+
+.pill-flat {
+  color: var(--muted);
+  background: var(--surface-sunken);
+}
+
 .punchline {
   border-left: 3px solid var(--accent);
   background: var(--surface);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
   padding: 1rem 1.25rem;
   margin-top: 1.5rem;
 }
@@ -214,6 +308,7 @@ h1 {
 .punchline strong {
   display: block;
   margin-bottom: 0.25rem;
+  color: var(--text-strong);
 }
 
 .muted {
@@ -234,8 +329,8 @@ h1 {
   font: inherit;
   font-weight: 600;
   font-size: 0.875rem;
-  padding: 0.5625rem 1.125rem;
-  border-radius: 8px;
+  padding: 0.625rem 1.25rem;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
@@ -245,13 +340,8 @@ h1 {
 .actions button.primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
-}
-
-@media (prefers-color-scheme: dark) {
-  .actions button.primary {
-    color: #0e1117;
-  }
+  color: var(--accent-ink);
+  font-weight: 700;
 }
 
 .actions button:disabled {
@@ -272,12 +362,31 @@ h1 {
 
 input[type='text'] {
   font: inherit;
-  padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  padding: 0.5625rem 0.875rem;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  width: 8rem;
+  /*
+   * min-width, not a fixed width: Inter runs a little wider per character than
+   * the previous system-font stack, and a fixed 8rem clipped the "Add a
+   * symbol" placeholder to "Add a symbo". Letting it grow to its content,
+   * bounded below, fixes that at every width without a magic number tied to
+   * one placeholder string.
+   */
+  min-width: 8rem;
+  width: 9.5rem;
+  max-width: 100%;
+}
+
+input[type='text']:focus-visible,
+.actions button:focus-visible,
+.toggle button:focus-visible,
+.tabs button:focus-visible,
+.picker select:focus-visible,
+button.link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .timeline {
@@ -289,7 +398,7 @@ input[type='text'] {
 .tabs {
   display: flex;
   gap: 1.5rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   margin-bottom: 1.75rem;
   /* Scroll rather than wrap: a wrapped tab label reads as a broken heading. */
   overflow-x: auto;
@@ -315,7 +424,7 @@ input[type='text'] {
 }
 
 .tabs button[aria-selected='true'] {
-  color: var(--text);
+  color: var(--text-strong);
   border-bottom-color: var(--accent);
 }
 
@@ -414,7 +523,7 @@ button.link.quiet:hover {
   justify-content: space-between;
   gap: 1.5rem;
   padding-bottom: 1rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .story {
@@ -437,7 +546,7 @@ button.link.quiet:hover {
 }
 
 .story-line {
-  stroke: var(--text);
+  stroke: var(--text-strong);
   stroke-width: 1.75;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -465,6 +574,7 @@ button.link.quiet:hover {
 .story-caption em {
   font-style: normal;
   color: var(--accent);
+  font-weight: 600;
 }
 
 /* Events inside a story run in the order they happened. */
@@ -479,18 +589,21 @@ button.link.quiet:hover {
   grid-template-columns: 2.5rem 1fr;
   gap: 0 1rem;
   padding: 1rem 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-soft);
   /* Without this the badge stretches to the row height, and an open disclosure
      turns a marker into a full-height coloured stripe. */
   align-items: start;
 }
 
 .story-event .arrow {
-  font-size: 1.5rem;
-  line-height: 1.2;
-  text-align: center;
-  border-radius: 8px;
-  padding: 0.125rem 0;
+  width: 2.5rem;
+  height: 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  line-height: 1;
+  border-radius: var(--radius-pill);
 }
 
 .story-event:last-child {
@@ -499,7 +612,7 @@ button.link.quiet:hover {
 
 .story-event .headline {
   font-size: 1.125rem;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: -0.01em;
   margin: 0 0 0.125rem;
 }
@@ -529,8 +642,8 @@ button.link.quiet:hover {
 }
 
 /*
- * Muted until wanted. One accent-blue disclosure beside a single event reads as
- * an invitation; twenty of them down a feed read as clutter, and they compete
+ * Muted until wanted. One accent disclosure beside a single event reads as an
+ * invitation; twenty of them down a feed read as clutter, and they compete
  * with "View what happened" for the same colour. It earns the accent on hover
  * and while open, which is when it is actually the thing being used.
  */
@@ -547,7 +660,7 @@ button.link.quiet:hover {
 
 .why summary:hover,
 .why[open] summary {
-  color: var(--accent);
+  color: var(--advance);
 }
 
 .why summary::-webkit-details-marker {
@@ -569,9 +682,9 @@ button.link.quiet:hover {
 .why-body {
   margin-top: 0.625rem;
   padding: 0.875rem 1rem;
-  border-radius: 8px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-soft);
 }
 
 .why-row {
@@ -589,12 +702,13 @@ button.link.quiet:hover {
 .why-row b {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  color: var(--text-strong);
 }
 
 .why-note {
   margin: 0.625rem 0 0;
   padding-top: 0.625rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-soft);
   font-size: 0.8125rem;
   color: var(--muted);
   line-height: 1.5;
@@ -646,11 +760,11 @@ button.link.quiet:hover {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.625rem 0.875rem;
   margin-bottom: 1.25rem;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-soft);
   font-size: 0.8125rem;
   color: var(--muted);
 }
@@ -664,7 +778,7 @@ button.link.quiet:hover {
 }
 
 .status-running .dot {
-  background: var(--advance);
+  background: var(--advance-fill);
   animation: pulse 2s ease-in-out infinite;
 }
 
@@ -687,7 +801,7 @@ button.link.quiet:hover {
 }
 
 .status-label {
-  color: var(--text);
+  color: var(--text-strong);
   font-weight: 600;
 }
 
@@ -701,7 +815,7 @@ button.link.quiet:hover {
 
 /* The one number on the strip that is worth noticing mid-demo. */
 .status-new {
-  color: var(--accent);
+  color: var(--advance);
   font-weight: 600;
 }
 
@@ -736,9 +850,9 @@ button.link.quiet:hover {
   font-size: 0.6875rem;
   letter-spacing: 0;
   padding: 0.0625rem 0.4375rem;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-soft);
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
@@ -748,7 +862,7 @@ button.link.quiet:hover {
 }
 
 .attention-note {
-  color: var(--accent);
+  color: var(--advance);
   font-weight: 600;
   font-size: 0.875rem;
 }
@@ -809,7 +923,7 @@ button.link.quiet:hover {
 .arrived {
   border-left: 3px solid var(--accent);
   background: var(--surface);
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   padding: 0.625rem 0.875rem;
   margin: 0 0 1.25rem;
   font-size: 0.875rem;
@@ -829,7 +943,7 @@ button.link.quiet:hover {
   font: inherit;
   font-size: 0.875rem;
   padding: 0.4375rem 0.625rem;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
