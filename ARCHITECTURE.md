@@ -1,8 +1,9 @@
 # Architecture
 
-Status: **Step 1 — foundation only.** No market features are implemented yet.
-This document records the shape we are building into, so that later steps have
-somewhere obvious to put things.
+Status: **feature-complete.** Domain, persistence, attention feed, replay,
+watchlist, and a price generator that keeps the demo moving are all built. This
+document records the shape and, more importantly, *why* each boundary is where
+it is — the decisions are the part that does not survive in the diff.
 
 ## Product thesis
 
@@ -25,15 +26,14 @@ Two consequences follow from that sentence, and they drive the whole design:
 
 ## Core domain concepts
 
-These are the nouns the system is organised around. All of them now exist in
-`packages/domain` except the Attention Feed's ranking, which arrives with the
-feed API.
+These are the nouns the system is organised around. All of them exist in
+`packages/domain`, as pure functions over plain values.
 
 | Concept | Meaning |
 | --- | --- |
 | **Instrument** | A thing that can be watched (a ticker/symbol). |
 | **Tick** | A raw observation of an instrument at an instant. High volume, low individual meaning. Ticks are input, not history. |
-| **Market Event** | A *meaningful transition* derived from ticks — the unit a human would actually care about. Derivation rules are deliberately not decided yet. |
+| **Market Event** | A *meaningful transition* derived from ticks — the unit a human would actually care about. The rule is a move of at least 5% from the active anchor; see *The significance rule*. |
 | **Event Log** | The append-only, ordered history of market events. Records are never mutated or deleted. This is a **data-model** commitment, not an infrastructure one — it is a table with an ordering, not a message broker. |
 | **Read Position (Watermark)** | Per user, per subscription: the point in the log up to which that user has already seen events. This is what makes "while I was away" answerable. |
 | **Attention Feed** | The ranked "Since you last checked" view. Reads the log from the user's watermark forward and orders by significance, not just recency. Ranking is a pure function of events — it does not mutate the log. |
@@ -216,13 +216,20 @@ statement it leaves none.
   `Timestamp` and the existing `schema_migrations.applied_at`. Text timestamps
   invite ambiguity about zone and format.
 
-### Not yet: the subscription dimension
+### Still not: the subscription dimension
 
-Watermarks are keyed by `user_id` alone, not `(user_id, watchlist_id)`. There is
-no watchlist entity yet, so a `watchlist_id` column would hold a placeholder
-constant in every row — a shape that looks like a decision but records nothing.
-The key widens in the migration that introduces watchlists, which is a small
-change against a table nothing else references yet.
+Watermarks are keyed by `user_id` alone, not `(user_id, watchlist_id)`.
+
+When this was first written the reason was that no watchlist entity existed, and
+a `watchlist_id` column would have held a placeholder constant in every row — a
+shape that looks like a decision but records nothing. Migration `003` then
+introduced watchlists, and the key was **still** not widened, for a second and
+better reason: `watchlist_entries` is keyed `(user_id, instrument_id)`, so a user
+has exactly one list. The dimension is still degenerate, and a column that can
+only ever hold one value per user is not yet information.
+
+It widens when a user can have two lists — and that is a migration against a
+table nothing else references by that key.
 
 ## The attention feed
 
@@ -485,11 +492,11 @@ demands it.
 | **Postgres** | Deferred, not rejected. Expected once we need concurrent writers or hosted deployment. The SQL-only boundary is what keeps this cheap. |
 | **Real-time push (WebSocket/SSE)** | The client polls — 2s for the market header, 4s for the watchlist, 8s for the feed. A push channel buys latency nobody is measuring, and costs a connection lifecycle, a reconnect policy, and a second delivery path for the same data. |
 | **A real ingestion pipeline** | The simulator writes in-process through the ordinary stores. Duplicate ticks, out-of-order arrival across a network, backpressure, staleness detection and provider health are all undecided, and are a phase of their own rather than something to grow the simulator into. |
-| **Auth / multi-user identity** | Watermarks need a user id, but not yet a login. A stub identity is enough until the feed exists. |
+| **Auth / multi-user identity** | `userId` is a query parameter and a text box, which is what makes "two people see different things" demonstrable by typing a name. A login would add a session layer without changing a single thing about how the feed is computed. |
 | **Background job scheduler** | The simulator's `setInterval` is the only scheduled work, and it lives in the composition root. A scheduler becomes interesting when something must survive a restart or run on more than one process. |
 | **Docker / deployment pipeline** | Local development needs no containers today. |
 | **ORM** | Hand-written SQL against a small schema is clearer and keeps the swap-to-Postgres path visible. Revisit if the schema grows awkward. |
-| **Shared component library / design system** | There are no UI screens yet. |
+| **Shared component library / design system** | Four screens do not need one. Tokens and a type scale, yes — those exist in `styles.css`. An `InstrumentRow` / `StatusPill` / `PriceDisplay` layer is the speculative abstraction §2.3 exists to refuse, and it was declined explicitly in iteration 8. |
 
 ## Testing approach
 

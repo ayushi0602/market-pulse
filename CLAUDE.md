@@ -21,6 +21,9 @@ Any design decision that breaks that property is wrong, however clean it looks.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — domain concepts, boundaries, deferred complexity
 - [CUT_LIST.md](CUT_LIST.md) — what we are deliberately not building
 - [PROGRESS.md](PROGRESS.md) — status by phase
+- [AUDIT.md](AUDIT.md) — full read of the repository: what exists, why, what the
+  audit found, and the strategy from here. Start here if you are picking this up
+  cold.
 
 ---
 
